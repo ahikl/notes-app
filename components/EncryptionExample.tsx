@@ -7,7 +7,7 @@ import {
   generateRandomStringKey,
   encryptTextWithStringKey,
   decryptTextWithStringKey,
-} from '../utils/crypto/EncryptionUtils';
+} from '@/utils/crypto/EncryptionUtils';
 
 const EncryptionExample: React.FC = () => {
   const [originalText, setOriginalText] = useState<string>('');
