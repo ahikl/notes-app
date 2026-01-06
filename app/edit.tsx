@@ -2,9 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useState, useRef } from 'react';
 import {
-  Alert,
   Animated,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { HeaderStyles } from '@/constants/HeaderStyles';
 
 export default function EditScreen() {
   const { id, title, content } = useLocalSearchParams();
@@ -75,18 +76,30 @@ export default function EditScreen() {
     }));
   };
 
+  // 状态管理弹窗
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
   // 预留函数调用接口
   const handleSaveNote = () => {
     // 预留保存笔记的函数
-    Alert.alert('提示', '笔记已保存');
+    setShowSaveModal(true);
   };
 
   const handleDeleteNote = () => {
     // 预留删除笔记的函数
-    Alert.alert('确认', '确定要删除这条笔记吗？', [
-      { text: '取消', style: 'cancel' },
-      { text: '删除', style: 'destructive' },
-    ]);
+    setShowDeleteModal(true);
+  };
+
+  const handleConfirmDelete = () => {
+    // 确认删除的逻辑
+    console.log('删除笔记');
+    setShowDeleteModal(false);
+    router.back();
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
   };
 
   // 显示悬浮窗并添加动画
@@ -198,8 +211,9 @@ export default function EditScreen() {
         transparent={true}
         visible={showDropdown}
         onRequestClose={closeDropdown}
+        accessibilityViewIsModal={true}
       >
-        <TouchableOpacity style={styles.modalOverlay} onPress={closeDropdown}>
+        <TouchableOpacity style={styles.modalOverlay} onPress={closeDropdown} accessible={false}>
           <Animated.View
             style={[
               styles.dropdownContainer,
@@ -225,22 +239,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    ...HeaderStyles.standardHeader,
     paddingHorizontal: 15,
-    paddingTop: 50,
-    paddingBottom: 15,
   },
   backButton: {
-    padding: 5,
+    ...HeaderStyles.backButton,
   },
   headerIcons: {
-    flexDirection: 'row',
+    ...HeaderStyles.headerIcons,
   },
   headerIcon: {
-    marginLeft: 15,
-    padding: 5,
+    ...HeaderStyles.headerIcon,
   },
   content: {
     flex: 1,
@@ -301,13 +310,17 @@ const styles = StyleSheet.create({
     marginRight: 15,
     minWidth: 150,
     elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    ...Platform.select({
+      ios: {
+        boxShadow: '0px 2px 3.84px rgba(0, 0, 0, 0.25)',
+      },
+      android: {
+        // elevation already handles shadow on Android
+      },
+      default: {
+        boxShadow: '0px 2px 3.84px rgba(0, 0, 0, 0.25)',
+      },
+    }),
   },
   dropdownItem: {
     paddingHorizontal: 16,

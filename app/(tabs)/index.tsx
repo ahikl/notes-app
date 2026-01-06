@@ -114,7 +114,7 @@ const styles = StyleSheet.create({
   // 主容器样式
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#fff',
   },
 
   // 搜索容器样式 - 水平布局，圆角背景
@@ -159,13 +159,13 @@ const styles = StyleSheet.create({
     margin: cardMargin / 2,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
+        boxShadow: '0px 2px 3px rgba(0, 0, 0, 0.1)',
       },
       android: {
         elevation: 3,
+      },
+      default: {
+        boxShadow: '0px 2px 3px rgba(0, 0, 0, 0.1)',
       },
     }),
   },
@@ -199,13 +199,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
+        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.3)',
       },
       android: {
         elevation: 5,
+      },
+      default: {
+        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.3)',
       },
     }),
   },

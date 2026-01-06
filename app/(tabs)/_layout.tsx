@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { HeaderStyles } from '@/constants/HeaderStyles';
 
 export default function TabLayout() {
   const router = useRouter();
@@ -27,13 +28,7 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   headerContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 15,
-    backgroundColor: '#fff',
+    ...HeaderStyles.standardHeader,
   },
   titleContainer: {
     flexDirection: 'row',

@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { HeaderStyles } from '@/constants/HeaderStyles';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -17,11 +18,12 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.sectionTitle}>账户设置</Text>
-        <View style={styles.optionItem}>
-          <Text style={styles.optionText}>个人资料</Text>
-          <Ionicons name="chevron-forward" size={20} color="#ccc" />
-        </View>
+        <TouchableOpacity onPress={() => router.push('/server-settings')}>
+          <View style={styles.optionItem}>
+            <Text style={styles.optionText}>server设置</Text>
+            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          </View>
+        </TouchableOpacity>
         <View style={styles.optionItem}>
           <Text style={styles.optionText}>通知设置</Text>
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
@@ -37,22 +39,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    backgroundColor: '#fff',
+    ...HeaderStyles.simpleHeader,
   },
   backButton: {
-    padding: 5,
-    marginRight: 10,
+    ...HeaderStyles.backButton,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    ...HeaderStyles.headerTitle,
   },
   content: {
     flex: 1,
@@ -76,10 +69,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 10,
     elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    ...Platform.select({
+      ios: {
+        boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.1)',
+      },
+      android: {
+        // elevation already handles shadow on Android
+      },
+      default: {
+        boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.1)',
+      },
+    }),
   },
   optionText: {
     fontSize: 16,
