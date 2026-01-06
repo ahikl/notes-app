@@ -22,25 +22,9 @@ export default function SettingsScreen() {
           <Text style={styles.optionText}>个人资料</Text>
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
         </View>
-
-        <Text style={styles.sectionTitle}>应用设置</Text>
-        <View style={styles.optionItem}>
-          <Text style={styles.optionText}>主题设置</Text>
-          <Ionicons name="chevron-forward" size={20} color="#ccc" />
-        </View>
         <View style={styles.optionItem}>
           <Text style={styles.optionText}>通知设置</Text>
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
-        </View>
-        <View style={styles.optionItem}>
-          <Text style={styles.optionText}>隐私设置</Text>
-          <Ionicons name="chevron-forward" size={20} color="#ccc" />
-        </View>
-
-        <Text style={styles.sectionTitle}>关于</Text>
-        <View style={styles.optionItem}>
-          <Text style={styles.optionText}>版本信息</Text>
-          <Text style={styles.versionText}>v1.0.0</Text>
         </View>
       </View>
     </SafeAreaView>
