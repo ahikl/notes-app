@@ -1,5 +1,5 @@
 import { Note } from '@/types/notes/NoteTypes';
-import { CryptoService } from './CryptoService';
+import { CryptoService } from '@/services';
 import noteService from '../notes/NoteService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 

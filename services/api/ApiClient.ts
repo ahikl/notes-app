@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getApiKeyWithFallback, getBaseUrl } from '@/utils/auth/AuthUtils';
+import { getApiKeyWithFallback, getApiUrl } from '@/utils/auth/AuthUtils';
 
 // API客户端配置
 export const api = axios.create({
@@ -16,9 +16,11 @@ const cleanBaseUrl = (url: string): string => url.replace(/\/$/, '');
 api.interceptors.request.use(
   async (config) => {
     // 异步获取并设置baseURL
-    const baseUrl = await getBaseUrl();
-    // 使用路径清洗函数处理斜杠，动态拼接 /api
-    config.baseURL = `${cleanBaseUrl(baseUrl)}/api`;
+    const baseUrl = await getApiUrl();
+    if (baseUrl) {
+      // 使用路径清洗函数处理斜杠，使用用户提供的完整API URL
+      config.baseURL = cleanBaseUrl(baseUrl);
+    }
 
     // 从环境变量或安全存储中获取API密钥
     const apiKey = await getApiKeyWithFallback();

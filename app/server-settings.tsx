@@ -1,22 +1,32 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
-import { ActivityIndicator } from 'react-native';
-import { generateEncryptionKey } from '@/utils/crypto/EncryptionUtils';
 import { HeaderStyles } from '@/constants/HeaderStyles';
+import { generateEncryptionKey } from '@/utils/crypto/EncryptionUtils';
+import {
+  getApiKey,
+  getApiUrl,
+  getEncryptionKey,
+  isValidApiKey,
+  isValidApiUrl,
+  saveApiKey,
+  saveApiUrl,
+  saveEncryptionKey,
+} from '@/utils/auth/AuthUtils';
 
 export default function ServerSettingsScreen() {
   const router = useRouter();
@@ -26,6 +36,34 @@ export default function ServerSettingsScreen() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // 组件加载时从存储中获取现有配置
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const storedApiUrl = await getApiUrl();
+        if (storedApiUrl) {
+          setApiUrl(storedApiUrl);
+        }
+
+        const storedApiKey = await getApiKey();
+        if (storedApiKey) {
+          setApiKey(storedApiKey);
+        }
+
+        const storedEncryptionKey = await getEncryptionKey();
+        if (storedEncryptionKey) {
+          setPassword(storedEncryptionKey);
+        }
+      } catch (error) {
+        console.error('加载设置时出错:', error);
+        // 如果加载失败，可以给用户一些提示或者继续运行应用
+      }
+    };
+
+    // 直接调用并处理Promise
+    void loadSettings();
+  }, []);
 
   // 现代化弹窗状态
   const [showCustomModal, setShowCustomModal] = useState({
@@ -39,18 +77,51 @@ export default function ServerSettingsScreen() {
 
   // 预留生成随机密钥功能
   const handleGenerateRandomKey = () => {
-    // TODO: 实现生成随机密钥功能
-    setShowCustomModal({
-      visible: true,
-      title: '提示',
-      message: '生成随机密钥功能暂未实现',
-      type: 'alert',
-      onConfirm: () => setShowCustomModal({ ...showCustomModal, visible: false }),
-      onCancel: () => setShowCustomModal({ ...showCustomModal, visible: false }),
-    });
+    // 检查当前密码字段是否已有内容
+    if (password && password.trim() !== '') {
+      // 如果已有密钥，提示是否覆盖
+      setShowCustomModal({
+        visible: true,
+        title: '确认覆盖',
+        message: '当前已有密钥，是否要生成新密钥并覆盖当前内容？',
+        type: 'confirm',
+        onConfirm: () => {
+          // 生成新密钥并设置到密码字段
+          const newKey = generateEncryptionKey();
+          setPassword(newKey);
+          setShowCustomModal({ ...showCustomModal, visible: false });
+          // 显示成功提示
+          setTimeout(() => {
+            setShowCustomModal({
+              visible: true,
+              title: '成功',
+              message: '新密钥已生成并填入输入框',
+              type: 'alert',
+              onConfirm: () => setShowCustomModal({ ...showCustomModal, visible: false }),
+              onCancel: () => setShowCustomModal({ ...showCustomModal, visible: false }),
+            });
+          }, 300);
+        },
+        onCancel: () => {
+          setShowCustomModal({ ...showCustomModal, visible: false });
+        },
+      });
+    } else {
+      // 如果没有现有密钥，直接生成新密钥
+      const newKey = generateEncryptionKey();
+      setPassword(newKey);
+      setShowCustomModal({
+        visible: true,
+        title: '成功',
+        message: '新密钥已生成并填入输入框',
+        type: 'alert',
+        onConfirm: () => setShowCustomModal({ ...showCustomModal, visible: false }),
+        onCancel: () => setShowCustomModal({ ...showCustomModal, visible: false }),
+      });
+    }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!apiUrl.trim()) {
       setShowCustomModal({
         visible: true,
@@ -63,9 +134,39 @@ export default function ServerSettingsScreen() {
       return;
     }
 
+    if (!isValidApiUrl(apiUrl)) {
+      setShowCustomModal({
+        visible: true,
+        title: '提示',
+        message: '请输入有效的API URL',
+        type: 'alert',
+        onConfirm: () => setShowCustomModal({ ...showCustomModal, visible: false }),
+        onCancel: () => setShowCustomModal({ ...showCustomModal, visible: false }),
+      });
+      return;
+    }
+
+    if (apiKey && !isValidApiKey(apiKey)) {
+      setShowCustomModal({
+        visible: true,
+        title: '提示',
+        message: '请输入有效的API密钥',
+        type: 'alert',
+        onConfirm: () => setShowCustomModal({ ...showCustomModal, visible: false }),
+        onCancel: () => setShowCustomModal({ ...showCustomModal, visible: false }),
+      });
+      return;
+    }
+
     setIsSaving(true);
-    // 模拟保存过程
-    setTimeout(() => {
+
+    try {
+      // 保存配置到存储
+      await saveApiUrl(apiUrl);
+      await saveApiKey(apiKey);
+      await saveEncryptionKey(password); // 保存加密密钥
+
+      // 实际保存成功，直接跳转回上一页
       setIsSaving(false);
       setShowCustomModal({
         visible: true,
@@ -78,7 +179,18 @@ export default function ServerSettingsScreen() {
         },
         onCancel: () => setShowCustomModal({ ...showCustomModal, visible: false }),
       });
-    }, 1500);
+    } catch (error) {
+      setIsSaving(false);
+      console.error('保存设置时出错:', error);
+      setShowCustomModal({
+        visible: true,
+        title: '错误',
+        message: '保存设置失败，请重试',
+        type: 'alert',
+        onConfirm: () => setShowCustomModal({ ...showCustomModal, visible: false }),
+        onCancel: () => setShowCustomModal({ ...showCustomModal, visible: false }),
+      });
+    }
   };
 
   // 关闭自定义弹窗
@@ -186,7 +298,7 @@ export default function ServerSettingsScreen() {
                 <View style={styles.passwordContainer}>
                   <TextInput
                     style={[styles.input, styles.passwordInput]}
-                    placeholder="请输入密钥a"
+                    placeholder="请输入密钥"
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
@@ -270,6 +382,7 @@ export default function ServerSettingsScreen() {
                     >
                       <Text style={[styles.modalButtonText, { color: '#8E8E93' }]}>取消</Text>
                     </TouchableOpacity>
+                    <View style={styles.buttonSeparator} />
                     <TouchableOpacity
                       style={[styles.modalButton, styles.modalConfirmButton]}
                       onPress={showCustomModal.onConfirm}
