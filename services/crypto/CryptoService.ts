@@ -1,7 +1,7 @@
 import { Buffer } from 'buffer';
 import 'react-native-get-random-values';
-import * as crypto from 'react-native-quick-crypto';
 import { EncryptedData, EncryptionKey, EncryptionOptions } from '@/types/crypto/CryptoTypes';
+import crypto from 'react-native-quick-crypto';
 
 // 检查是否在Web环境中，如果是则使用模拟实现
 const isWebEnvironment = typeof window !== 'undefined';
