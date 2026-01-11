@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ScrollView } from 'react-native';
+import { Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
-  generateEncryptionKey,
-  encryptText,
   decryptText,
-  generateRandomStringKey,
-  encryptTextWithStringKey,
   decryptTextWithStringKey,
+  encryptText,
+  encryptTextWithStringKey,
+  generateEncryptionKey,
+  generateRandomStringKey,
 } from '@/utils/crypto/EncryptionUtils';
+import { useNotification } from '@/components/NotificationManager';
 
 const EncryptionExample: React.FC = () => {
   const [originalText, setOriginalText] = useState<string>('');
@@ -16,25 +17,27 @@ const EncryptionExample: React.FC = () => {
   const [key, setKey] = useState<string>('');
   const [stringKey, setStringKey] = useState<string>('');
 
+  const { showSuccess, showError } = useNotification();
+
   const handleGenerateKey = () => {
     const newKey = generateEncryptionKey();
     setKey(newKey);
-    Alert.alert('成功', '已生成新的加密密钥');
+    showSuccess('已生成新的加密密钥');
   };
 
   const handleGenerateStringKey = () => {
     const newKey = generateRandomStringKey();
     setStringKey(newKey);
-    Alert.alert('成功', '已生成新的字符串密钥');
+    showSuccess('已生成新的字符串密钥');
   };
 
   const handleEncrypt = () => {
     if (!originalText) {
-      Alert.alert('错误', '请输入要加密的文本');
+      showError('请输入要加密的文本');
       return;
     }
     if (!key) {
-      Alert.alert('错误', '请先生成或输入密钥');
+      showError('请先生成或输入密钥');
       return;
     }
 
@@ -42,38 +45,38 @@ const EncryptionExample: React.FC = () => {
       const encrypted = encryptText(originalText, key);
       setEncryptedText(encrypted);
       setDecryptedText(''); // 清空解密文本
-      Alert.alert('成功', '文本已加密');
+      showSuccess('文本已加密');
     } catch (error) {
-      Alert.alert('加密失败', (error as Error).message);
+      showError((error as Error).message);
     }
   };
 
   const handleDecrypt = () => {
     if (!encryptedText) {
-      Alert.alert('错误', '请先进行加密操作或输入加密文本');
+      showError('请先进行加密操作或输入加密文本');
       return;
     }
     if (!key) {
-      Alert.alert('错误', '请先生成或输入密钥');
+      showError('请先生成或输入密钥');
       return;
     }
 
     try {
       const decrypted = decryptText(encryptedText, key);
       setDecryptedText(decrypted);
-      Alert.alert('成功', '文本已解密');
+      showSuccess('文本已解密');
     } catch (error) {
-      Alert.alert('解密失败', (error as Error).message);
+      showError((error as Error).message);
     }
   };
 
   const handleStringKeyEncrypt = () => {
     if (!originalText) {
-      Alert.alert('错误', '请输入要加密的文本');
+      showError('请输入要加密的文本');
       return;
     }
     if (!stringKey) {
-      Alert.alert('错误', '请先生成或输入字符串密钥');
+      showError('请先生成或输入字符串密钥');
       return;
     }
 
@@ -81,28 +84,28 @@ const EncryptionExample: React.FC = () => {
       const encrypted = encryptTextWithStringKey(originalText, stringKey);
       setEncryptedText(encrypted);
       setDecryptedText(''); // 清空解密文本
-      Alert.alert('成功', '文本已使用字符串密钥加密');
+      showSuccess('文本已使用字符串密钥加密');
     } catch (error) {
-      Alert.alert('加密失败', (error as Error).message);
+      showError((error as Error).message);
     }
   };
 
   const handleStringKeyDecrypt = () => {
     if (!encryptedText) {
-      Alert.alert('错误', '请先进行加密操作或输入加密文本');
+      showError('请先进行加密操作或输入加密文本');
       return;
     }
     if (!stringKey) {
-      Alert.alert('错误', '请先生成或输入字符串密钥');
+      showError('请先生成或输入字符串密钥');
       return;
     }
 
     try {
       const decrypted = decryptTextWithStringKey(encryptedText, stringKey);
       setDecryptedText(decrypted);
-      Alert.alert('成功', '文本已使用字符串密钥解密');
+      showSuccess('文本已使用字符串密钥解密');
     } catch (error) {
-      Alert.alert('解密失败', (error as Error).message);
+      showError((error as Error).message);
     }
   };
 

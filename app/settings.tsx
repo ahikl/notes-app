@@ -1,24 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { HeaderStyles } from '@/constants/HeaderStyles';
 import LocalStorageDemo from '@/components/LocalStorageDemo';
 import { synchronizeNotes } from '@/services';
+import { useNotification } from '@/components/NotificationManager';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const [showLocalStorageDemo, setShowLocalStorageDemo] = useState(false);
+  const { showInfo, showSuccess, showError } = useNotification();
 
   const handleSyncNotes = async () => {
     try {
-      Alert.alert('同步中', '正在同步笔记，请稍候...');
+      showInfo('正在同步笔记，请稍候...');
       const result = await synchronizeNotes();
-      Alert.alert('同步完成', `同步成功！更新了 ${result.updates.length} 条笔记。`);
+      showSuccess(`同步成功！更新了 ${result.updates.length} 条笔记。`);
     } catch (error) {
       console.error('同步失败:', error);
-      Alert.alert('同步失败', '笔记同步失败，请检查网络连接和API设置。');
+      showError('笔记同步失败，请检查网络连接和API设置。');
     }
   };
 

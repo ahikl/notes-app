@@ -174,10 +174,11 @@ export const updateNote = async (id: string, noteData: UpdateNoteRequest): Promi
 
     await (db.runAsync as any)(
       `UPDATE ${NOTES_TABLE} SET title = ?, content = ?, is_encrypted = ?, sync_status = 1, updated_at = ? WHERE id = ?`,
-      [noteData.title, noteData.content, noteData.is_encrypted, 1, updatedAt, id], // 强制设置 sync_status 为 1
+      [noteData.title, noteData.content, noteData.is_encrypted || 0, updatedAt, id], // 强制设置 sync_status 为 1
     );
 
     console.log('笔记更新成功:', id);
+    console.log('笔记更新内容:', noteData.content);
   } catch (error) {
     console.error('更新笔记失败:', error);
     throw error;

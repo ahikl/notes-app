@@ -1,6 +1,7 @@
 import { Note } from '@/types/notes/NoteTypes';
 import { CryptoService } from '@/services';
 import noteService from '../notes/NoteService';
+import localNoteService from '../local/LocalNoteService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
@@ -115,7 +116,7 @@ export class EncryptedNoteService {
    */
   static async getAllDecryptedNotes(): Promise<Note[]> {
     const key = await this.getOrCreateEncryptionKey();
-    const paginatedNotes = await noteService.getNotes();
+    const paginatedNotes = await localNoteService.getNotes();
     const notes = paginatedNotes.data; // 从分页响应中提取数据
 
     return await Promise.all(

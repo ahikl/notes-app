@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Modal,
@@ -13,38 +13,78 @@ import {
   View,
 } from 'react-native';
 import { HeaderStyles } from '@/constants/HeaderStyles';
+import { createNote, deleteNote, getNoteById, updateNote } from '@/services/local/LocalNoteService';
+import { useNotification } from '@/components/NotificationManager';
 
 export default function EditScreen() {
   const { id, title, content } = useLocalSearchParams();
   const router = useRouter();
+  const { showSuccess, showError } = useNotification();
 
   const [noteTitle, setNoteTitle] = useState((title as string) || '');
   const [noteContent, setNoteContent] = useState((content as string) || '');
+
+  // 添加防抖计时器引用
+  const debounceTimer = useRef<number | null>(null);
 
   // 添加悬浮窗状态
   const [showDropdown, setShowDropdown] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current; // 用于淡入动画
   const scaleAnim = useRef(new Animated.Value(0.8)).current; // 用于缩放动画
 
+  // 初始加密状态
+  const [initialEncryptStatus, setInitialEncryptStatus] = useState(false);
+
   // 预留选项状态，用于勾选框
   const [optionsState, setOptionsState] = useState({
     save: false,
     delete: false,
     share: false,
-    encrypt: true, // 默认为加密状态
+    encrypt: false, // 初始为未加密，稍后更新
   });
 
-  const handleBack = () => {
+  // 在组件加载时获取现有笔记的加密状态
+  useEffect(() => {
+    const loadExistingNote = async () => {
+      if (id && id !== 'undefined' && id !== '') {
+        try {
+          const existingNote = await getNoteById(id as string);
+          if (existingNote) {
+            setInitialEncryptStatus(existingNote.is_encrypted === 1);
+            setOptionsState((prev) => ({
+              ...prev,
+              encrypt: existingNote.is_encrypted === 1,
+            }));
+          }
+        } catch (error) {
+          console.error('加载现有笔记失败:', error);
+        }
+      } else {
+        // 对于新笔记，设置默认加密状态
+        setInitialEncryptStatus(false);
+        setOptionsState((prev) => ({
+          ...prev,
+          encrypt: false,
+        }));
+      }
+    };
+
+    loadExistingNote().catch((error) => console.error('Error loading existing note:', error));
+  }, [id]);
+
+  const handleBack = async () => {
+    // 在返回之前确保保存当前的修改
+    await saveNote();
     router.back();
   };
 
   // 处理悬浮窗选项
-  const handleOptionSelect = (option: string) => {
+  const handleOptionSelect = async (option: string) => {
     // 执行选项的处理函数
     switch (option) {
       case 'save':
         // 保存笔记的逻辑
-        handleSaveNote();
+        await handleSaveNote();
         break;
       case 'delete':
         // 删除笔记的逻辑
@@ -80,9 +120,95 @@ export default function EditScreen() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
+  // 添加一个状态来跟踪是否正在保存，防止重复保存
+  const [isSaving, setIsSaving] = useState(false);
+
+  // 保存笔记
+  const saveNote = async () => {
+    // 防止重复保存
+    if (isSaving) return;
+    setIsSaving(true);
+
+    try {
+      // 对于已存在的笔记，即使内容为空也应该保存（允许清空笔记）
+      // 对于新笔记，如果内容和标题都为空则不保存
+      if (!id || id === '' || id === 'undefined') {
+        if (!noteContent.trim() && !noteTitle.trim()) {
+          return; // 新笔记且内容和标题都为空时不保存
+        }
+      }
+
+      // 如果标题为空，自动取内容前10个字符作为标题
+      let titleToUse = noteTitle;
+      if (!titleToUse.trim()) {
+        titleToUse = noteContent.trim().substring(0, 10) || '未命名笔记';
+      }
+
+      if (id && id !== '' && id !== 'undefined') {
+        // 检查id是否存在且不是'undefined'字符串
+        // 更新现有笔记
+        await updateNote(id as string, {
+          title: titleToUse,
+          content: noteContent,
+          is_encrypted: optionsState.encrypt ? 1 : 0, // 使用当前加密状态
+          updated_at: new Date().toISOString(),
+        });
+        showSuccess('笔记已更新');
+      } else {
+        // 创建新笔记
+        await createNote({
+          title: titleToUse,
+          content: noteContent,
+          is_encrypted: optionsState.encrypt ? 1 : 0, // 使用当前加密状态
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        showSuccess('笔记已创建');
+      }
+    } catch (error) {
+      console.error('保存笔记失败:', error);
+      showError('保存笔记失败');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 自动保存功能
+  const autoSave = () => {
+    // 清除之前的定时器
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+
+    // 设置新的定时器
+    debounceTimer.current = Number(
+      setTimeout(async () => {
+        await saveNote();
+      }, 1000),
+    ); // 1秒后自动保存
+  };
+
+  // 当内容改变时触发自动保存
+  useEffect(() => {
+    // 防止初次加载时触发自动保存
+    if (noteContent !== (content as string) || noteTitle !== (title as string)) {
+      if (noteContent || noteTitle) {
+        // 只有当内容或标题不为空时才触发自动保存
+        autoSave();
+      }
+    }
+
+    // 组件卸载时清除定时器
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(Number(debounceTimer.current));
+      }
+    };
+  }, [noteTitle, noteContent, title, content]);
+
   // 预留函数调用接口
-  const handleSaveNote = () => {
-    // 预留保存笔记的函数
+  const handleSaveNote = async () => {
+    await saveNote();
     setShowSaveModal(true);
   };
 
@@ -91,11 +217,20 @@ export default function EditScreen() {
     setShowDeleteModal(true);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     // 确认删除的逻辑
-    console.log('删除笔记');
-    setShowDeleteModal(false);
-    router.back();
+    try {
+      if (id && id !== '' && id !== 'undefined') {
+        // 如果是编辑现有笔记，则删除它
+        await deleteNote(id as string);
+        showSuccess('笔记已删除');
+      }
+      setShowDeleteModal(false);
+      router.back();
+    } catch (error) {
+      console.error('删除笔记失败:', error);
+      showError('删除笔记失败');
+    }
   };
 
   const handleCancelDelete = () => {
@@ -186,7 +321,7 @@ export default function EditScreen() {
           placeholder="标题"
           placeholderTextColor="#888"
           underlineColorAndroid="transparent"
-          selectionColor="#00000000"
+          selectionColor="#007AFF"
           caretHidden={false}
         />
 
@@ -200,7 +335,7 @@ export default function EditScreen() {
           multiline={true}
           textAlignVertical="top"
           underlineColorAndroid="transparent"
-          selectionColor="#00000000"
+          selectionColor="#007AFF"
           caretHidden={false}
         />
       </ScrollView>

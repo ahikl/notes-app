@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import {
   createLocalNote,
   deleteLocalNote,
@@ -8,6 +8,7 @@ import {
   updateLocalNote,
 } from '@/services';
 import { CreateNoteRequest, Note } from '@/types/notes/NoteTypes';
+import { useNotification } from '@/components/NotificationManager';
 
 interface LocalStorageDemoProps {
   onBack: () => void;
@@ -17,6 +18,8 @@ const LocalStorageDemo: React.FC<LocalStorageDemoProps> = ({ onBack }) => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({ total: 0 });
+
+  const { showSuccess, showError, showInfo } = useNotification();
 
   // 加载笔记列表
   const loadNotes = async () => {
@@ -29,7 +32,7 @@ const LocalStorageDemo: React.FC<LocalStorageDemoProps> = ({ onBack }) => {
       const statsResult = await getNotesStats();
       setStats(statsResult);
     } catch (error) {
-      Alert.alert('错误', '加载笔记失败: ' + (error as Error).message);
+      showError('加载笔记失败: ' + (error as Error).message);
     } finally {
       setLoading(false);
     }
@@ -46,17 +49,17 @@ const LocalStorageDemo: React.FC<LocalStorageDemoProps> = ({ onBack }) => {
       };
 
       await createLocalNote(sampleNote);
-      Alert.alert('成功', '示例笔记创建成功！');
+      showSuccess('示例笔记创建成功！');
       await loadNotes(); // 重新加载列表
     } catch (error) {
-      Alert.alert('错误', '创建笔记失败: ' + (error as Error).message);
+      showError('创建笔记失败: ' + (error as Error).message);
     }
   };
 
   // 更新第一个笔记
   const updateFirstNote = async () => {
     if (notes.length === 0) {
-      Alert.alert('提示', '没有可更新的笔记');
+      showInfo('没有可更新的笔记');
       return;
     }
 
@@ -69,27 +72,27 @@ const LocalStorageDemo: React.FC<LocalStorageDemoProps> = ({ onBack }) => {
         updated_at: new Date().toISOString(),
       });
 
-      Alert.alert('成功', '笔记更新成功！');
+      showSuccess('笔记更新成功！');
       await loadNotes();
     } catch (error) {
-      Alert.alert('错误', '更新笔记失败: ' + (error as Error).message);
+      showError('更新笔记失败: ' + (error as Error).message);
     }
   };
 
   // 删除最后一个笔记
   const deleteLastNote = async () => {
     if (notes.length === 0) {
-      Alert.alert('提示', '没有可删除的笔记');
+      showInfo('没有可删除的笔记');
       return;
     }
 
     try {
       const lastNote = notes[notes.length - 1];
       await deleteLocalNote(lastNote.id);
-      Alert.alert('成功', '笔记删除成功！');
+      showSuccess('笔记删除成功！');
       await loadNotes();
     } catch (error) {
-      Alert.alert('错误', '删除笔记失败: ' + (error as Error).message);
+      showError('删除笔记失败: ' + (error as Error).message);
     }
   };
 
@@ -99,7 +102,7 @@ const LocalStorageDemo: React.FC<LocalStorageDemoProps> = ({ onBack }) => {
       const result = await getLocalNotes({ search: searchTerm });
       setNotes(result.data);
     } catch (error) {
-      Alert.alert('错误', '搜索笔记失败: ' + (error as Error).message);
+      showError('搜索笔记失败: ' + (error as Error).message);
     }
   };
 

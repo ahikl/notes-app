@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react'; // 引入 useRef
+import { useFocusEffect } from '@react-navigation/native';
 import {
-  Alert,
   Dimensions,
   Platform,
   ScrollView,
@@ -13,21 +13,14 @@ import {
   View,
 } from 'react-native';
 import { Note } from '@/types/notes/NoteTypes';
-import { getNotes, synchronizeNotes } from '@/services';
+import { synchronizeNotes } from '@/services';
+import { getNotes } from '@/services/local/LocalNoteService';
+import { useNotification } from '@/components/NotificationManager';
 
-// 获取屏幕宽度用于计算卡片尺寸
 const { width } = Dimensions.get('window');
-// 设置卡片间距
 const cardMargin = 10;
-// 计算每行显示两个卡片时的宽度 (屏幕宽度 - 4个间距) / 2
 const cardWidth = (width - 4 * cardMargin) / 2;
 
-/**
- * 限制文本长度的辅助函数
- * @param text - 需要截断的文本
- * @param maxLength - 最大长度
- * @returns 截断后的文本，超出部分用省略号表示
- */
 const truncateText = (text: string, maxLength: number) => {
   if (text.length <= maxLength) {
     return text;
@@ -35,65 +28,108 @@ const truncateText = (text: string, maxLength: number) => {
   return text.substring(0, maxLength) + '...';
 };
 
-/**
- * 首页屏幕组件 - 显示笔记列表
- * @returns JSX元素
- */
 export default function IndexScreen() {
-  // 管理当前激活的标签页状态 ('notes' 或 'tasks')
-  const [activeTab, setActiveTab] = useState<'notes' | 'tasks'>('notes');
-  // 获取路由导航对象
   const router = useRouter();
-  // 管理笔记数据状态
   const [notes, setNotes] = useState<Note[]>([]);
-  // 管理搜索关键词状态
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
-  // 加载笔记数据
-  useEffect(() => {
-    loadNotes();
-  }, [searchQuery]);
+  // 使用 ref 来追踪当前的 loading 状态，防止闭包问题导致的重复请求
+  const isLoadingRef = useRef(false);
 
-  // 加载笔记数据函数
-  const loadNotes = async () => {
+  const { showInfo, showSuccess, showError } = useNotification();
+
+  // 核心修复：重构 loadNotes，移除对外部 page 状态的强依赖，通过参数控制
+  const fetchNotesData = async (currentPage: number, query: string, isReset: boolean) => {
+    if (isLoadingRef.current) return;
+
     try {
-      const result = await getNotes({ search: searchQuery });
-      setNotes(result.data);
+      isLoadingRef.current = true;
+      setIsLoading(true);
+
+      const result = await getNotes({
+        search: query,
+        page: currentPage,
+        limit: 10,
+      });
+
+      if (isReset) {
+        setNotes(result.data);
+        setPage(1); // 重置页码状态
+      } else {
+        setNotes((prev) => [...prev, ...result.data]);
+        setPage(currentPage); // 更新页码状态
+      }
+
+      setHasMore(result.data.length === 10);
     } catch (error) {
       console.error('加载笔记失败:', error);
-      Alert.alert('错误', '加载笔记失败，请检查网络连接。');
+      showError('加载笔记失败，请检查网络连接。');
+    } finally {
+      setIsLoading(false);
+      isLoadingRef.current = false;
     }
   };
+
+  // 1. 初始化和搜索变化时的副作用 (只在 mount 或 search 变化时执行)
+  useEffect(() => {
+    // 搜索或初始化时，强制加载第1页，并标记为重置
+    fetchNotesData(1, searchQuery, true);
+  }, [searchQuery]); // 移除 loadNotes 依赖，只依赖 searchQuery
+
+  // 2. 焦点返回时刷新 (可选：保持当前列表只刷新，或者重置回第一页)
+  useFocusEffect(
+    React.useCallback(() => {
+      // 这里选择静默刷新第一页，或者你可以选择不执行任何操作
+      // 如果你希望每次返回页面都刷新最新数据：
+      fetchNotesData(1, searchQuery, true);
+    }, [searchQuery]),
+  );
 
   // 处理搜索
   const handleSearch = (query: string) => {
     setSearchQuery(query);
+    // useEffect 会监听到 searchQuery 变化自动触发 fetchNotesData
   };
 
-  // 同步笔记
+  // 处理滚动 - 加载更多
+  const handleScroll = (event: any) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const paddingToBottom = 40;
+
+    // 检查是否滚动到底部
+    if (layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom) {
+      // 只有在非加载中且有更多数据时才加载下一页
+      if (!isLoadingRef.current && hasMore) {
+        // 请求下一页 (当前页 + 1)
+        fetchNotesData(page + 1, searchQuery, false);
+      }
+    }
+  };
+
   const handleSync = async () => {
     try {
-      Alert.alert('同步中', '正在同步笔记，请稍候...');
+      showInfo('正在同步笔记，请稍候...');
       const result = await synchronizeNotes();
-      Alert.alert('同步完成', `同步成功！更新了 ${result.updates.length} 条笔记。`);
-      // 重新加载笔记
-      loadNotes();
+      showSuccess(`同步成功！更新了 ${result.updates.length} 条笔记。`);
+      // 同步完成后重置列表
+      fetchNotesData(1, searchQuery, true);
     } catch (error) {
       console.error('同步失败:', error);
-      Alert.alert('同步失败', '笔记同步失败，请检查网络连接和API设置。');
+      showError('笔记同步失败，请检查网络连接和API设置。');
     }
   };
 
   return (
     <View style={styles.container}>
-      {/* 搜索栏区域 - 包含搜索图标和输入框 */}
-      <View style={styles.searchContainer}>
+      <View style={styles.searchContainerFixed}>
         <Ionicons name="search" size={20} color="#888" style={styles.searchIcon} />
         <TextInput
           placeholder="搜索笔记..."
           style={styles.searchInput}
           placeholderTextColor="#888"
-          underlineColorAndroid="transparent"
           value={searchQuery}
           onChangeText={handleSearch}
         />
@@ -102,139 +138,161 @@ export default function IndexScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 内容区域 - 包含笔记网格 */}
-      <ScrollView style={styles.contentContainer}>
-        <View style={styles.gridContainer}>
-          {/* 遍历笔记数据，渲染笔记卡片 */}
-          {notes.map((note) => (
-            <TouchableOpacity
-              key={note.id}
-              style={styles.card}
-              onPress={() =>
-                // 点击卡片时导航到编辑页面，传递笔记参数
-                router.push({
-                  pathname: '/edit',
-                  params: { id: note.id, title: note.title, content: note.content },
-                })
-              }
-            >
-              {/* 笔记标题 - 限制显示一行，超出截断 */}
-              <Text style={styles.cardTitle} numberOfLines={1} ellipsizeMode="tail">
-                {truncateText(note.title, 10)}
-              </Text>
-              {/* 笔记内容 - 限制显示两行，超出截断 */}
-              <Text style={styles.cardContent} numberOfLines={2} ellipsizeMode="tail">
-                {truncateText(note.content, 30)}
-              </Text>
-              {/* 笔记日期 */}
-              <Text style={styles.cardDate}>{new Date(note.updated_at).toLocaleDateString()}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+      <View style={styles.contentWrapper}>
+        <ScrollView
+          style={styles.contentContainer}
+          // 修复样式：添加 flexGrow 确保内容少时也能撑开容器，避免滚动卡顿
+          contentContainerStyle={[styles.scrollContentContainer, { flexGrow: 1 }]}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled" // 优化键盘体验
+        >
+          <View style={styles.gridContainer}>
+            {notes.map((note) => (
+              <TouchableOpacity
+                key={note.id}
+                style={styles.card}
+                onPress={() =>
+                  router.push({
+                    pathname: '/edit',
+                    params: { id: note.id, title: note.title, content: note.content },
+                  })
+                }
+              >
+                <Text style={styles.cardTitle} numberOfLines={1}>
+                  {truncateText(note.title, 10)}
+                </Text>
+                <Text style={styles.cardContent} numberOfLines={2}>
+                  {truncateText(note.content, 30)}
+                </Text>
+                <Text style={styles.cardDate}>
+                  {new Date(note.updated_at).toLocaleDateString()}
+                </Text>
+              </TouchableOpacity>
+            ))}
 
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() =>
-          router.push({
-            pathname: '/edit',
-            params: { id: '', title: '', content: '' },
-          })
-        }
-      >
-        <Ionicons name="add" size={24} color="#fff" />
-      </TouchableOpacity>
+            {/* 加载状态显示优化 */}
+            {isLoading && (
+              <View style={styles.loadingContainer}>
+                <Text style={styles.loadingText}>加载中...</Text>
+              </View>
+            )}
+            {!hasMore && notes.length > 0 && (
+              <View style={styles.loadingFooter}>
+                <Text style={styles.loadingText}>— 已加载全部笔记 —</Text>
+              </View>
+            )}
+            {!isLoading && notes.length === 0 && (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>暂无笔记</Text>
+              </View>
+            )}
+          </View>
+        </ScrollView>
+
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={() =>
+            router.push({
+              pathname: '/edit',
+              params: { id: '', title: '', content: '' },
+            })
+          }
+        >
+          <Ionicons name="add" size={24} color="#fff" />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
-// 样式定义 - 包含所有组件的样式配置
 const styles = StyleSheet.create({
-  // 主容器样式
   container: {
     flex: 1,
     backgroundColor: '#fff',
   },
-
-  // 搜索容器样式 - 水平布局，圆角背景
-  searchContainer: {
+  contentWrapper: {
+    flex: 1,
+    position: 'relative',
+  },
+  searchContainerFixed: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EEE',
+    backgroundColor: '#F5F5F5', // 稍微调深一点背景色增加对比度
     height: 45,
     marginHorizontal: 20,
-    marginVertical: 15,
+    marginTop: 15, // 适配全面屏顶部
+    marginBottom: 10,
     borderRadius: 25,
     paddingHorizontal: 15,
+    zIndex: 10,
   },
-  // 搜索图标样式
   searchIcon: {
     marginRight: 10,
   },
-  // 搜索输入框样式
   searchInput: {
     flex: 1,
     fontSize: 16,
     color: '#333',
-    borderWidth: 0,
-    outlineWidth: 0,
+    paddingVertical: 0, // 修复安卓文字垂直居中
   },
-  // 同步按钮样式
   syncButton: {
     marginLeft: 10,
     padding: 5,
   },
-  // 内容容器样式
   contentContainer: {
     flex: 1,
   },
-  // 网格容器样式 - 支持换行布局
+  scrollContentContainer: {
+    paddingBottom: 80, // 增加底部留白，防止内容被 FAB 遮挡
+  },
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 10,
   },
-  // 卡片样式 - 白色背景，圆角，阴影效果
   card: {
     width: cardWidth,
     backgroundColor: '#fff',
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 15,
     margin: cardMargin / 2,
+    borderWidth: 1, // 添加细边框增加质感
+    borderColor: '#eee',
     ...Platform.select({
       ios: {
-        boxShadow: '0px 2px 3px rgba(0, 0, 0, 0.1)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
       },
       android: {
         elevation: 3,
       },
-      default: {
-        boxShadow: '0px 2px 3px rgba(0, 0, 0, 0.1)',
-      },
     }),
   },
-  // 卡片标题样式
   cardTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 5,
+    marginBottom: 8,
+    color: '#333',
   },
-  // 卡片内容样式
   cardContent: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 10,
+    marginBottom: 12,
+    lineHeight: 20,
   },
-  // 卡片日期样式
   cardDate: {
     fontSize: 12,
     color: '#999',
+    marginTop: 'auto', // 将日期推到底部
   },
-  // 浮动操作按钮样式 - 圆形，黄色背景，阴影效果
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 20,
+    bottom: 30, // 稍微抬高一点
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -243,14 +301,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...Platform.select({
       ios: {
-        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.3)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
       },
       android: {
-        elevation: 5,
-      },
-      default: {
-        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.3)',
+        elevation: 6,
       },
     }),
+  },
+  loadingContainer: {
+    width: '100%',
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  loadingFooter: {
+    width: '100%',
+    paddingVertical: 20,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#999',
+  },
+  emptyContainer: {
+    width: '100%',
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#999',
+    fontSize: 16,
   },
 });

@@ -3,9 +3,6 @@ import 'react-native-get-random-values';
 import { EncryptedData, EncryptionKey, EncryptionOptions } from '@/types/crypto/CryptoTypes';
 import crypto from 'react-native-quick-crypto';
 
-// 检查是否在Web环境中，如果是则使用模拟实现
-const isWebEnvironment = typeof window !== 'undefined';
-
 /**
  * AES加密服务
  * 提供加密、解密和密钥生成功能
@@ -17,17 +14,8 @@ export class CryptoService {
    * @returns 随机生成的密钥Buffer
    */
   static generateRandomKey(length: number = 32): Buffer {
-    if (isWebEnvironment) {
-      // 在Web环境中使用简单的模拟实现
-      const array = new Uint8Array(length);
-      for (let i = 0; i < length; i++) {
-        array[i] = Math.floor(Math.random() * 256);
-      }
-      return Buffer.from(array);
-    } else {
-      // 在原生环境中使用react-native-quick-crypto
-      return Buffer.from(crypto.randomBytes(length));
-    }
+    // 在原生环境中使用react-native-quick-crypto
+    return Buffer.from(crypto.randomBytes(length));
   }
 
   /**
@@ -75,21 +63,14 @@ export class CryptoService {
    * @returns 加密后的数据（base64格式）
    */
   static encrypt(data: string, key: Buffer, algorithm: string = 'aes-256-cbc'): string {
-    if (isWebEnvironment) {
-      // Web环境中的模拟加密：简单base64编码加上时间戳
-      const timestamp = Date.now().toString();
-      const dataWithTimestamp = `${data}|${timestamp}`;
-      return Buffer.from(dataWithTimestamp).toString('base64');
-    } else {
-      // 原生环境使用真正的加密
-      const iv = crypto.randomFillSync(new Uint8Array(16));
-      const cipher = crypto.createCipheriv(algorithm, key, iv);
-      let encrypted = cipher.update(data, 'utf8', 'base64');
-      encrypted += cipher.final('base64');
+    // 原生环境使用真正的加密
+    const iv = crypto.randomFillSync(new Uint8Array(16));
+    const cipher = crypto.createCipheriv(algorithm, key, iv);
+    let encrypted = cipher.update(data, 'utf8', 'base64');
+    encrypted += cipher.final('base64');
 
-      // 将IV和加密数据组合在一起
-      return `${Buffer.from(iv).toString('base64')}:${encrypted}`;
-    }
+    // 将IV和加密数据组合在一起
+    return `${Buffer.from(iv).toString('base64')}:${encrypted}`;
   }
 
   /**
@@ -100,34 +81,23 @@ export class CryptoService {
    * @returns 解密后的原始数据
    */
   static decrypt(encryptedData: string, key: Buffer, algorithm: string = 'aes-256-cbc'): string {
-    if (isWebEnvironment) {
-      // Web环境中的模拟解密：解码base64并移除时间戳
-      try {
-        const decoded = Buffer.from(encryptedData, 'base64').toString('utf8');
-        const parts = decoded.split('|');
-        return parts[0]; // 返回原始数据部分
-      } catch (error) {
-        throw new Error(`Web解密失败: ${(error as Error).message}`);
-      }
-    } else {
-      // 原生环境解密
-      const parts = encryptedData.split(':');
-      if (parts.length !== 2) {
-        throw new Error('加密数据格式错误');
-      }
-      const [ivBase64, encryptedContent] = parts;
-      const iv = Buffer.from(ivBase64, 'base64');
-
-      // 创建解密器
-      const decipher = crypto.createDecipheriv(algorithm, key, iv);
-      decipher.setAutoPadding(true);
-
-      // 解密数据
-      let decrypted = decipher.update(encryptedContent, 'base64', 'utf8');
-      decrypted += decipher.final('utf8');
-
-      return decrypted;
+    // 原生环境解密
+    const parts = encryptedData.split(':');
+    if (parts.length !== 2) {
+      throw new Error('加密数据格式错误');
     }
+    const [ivBase64, encryptedContent] = parts;
+    const iv = Buffer.from(ivBase64, 'base64');
+
+    // 创建解密器
+    const decipher = crypto.createDecipheriv(algorithm, key, iv);
+    decipher.setAutoPadding(true);
+
+    // 解密数据
+    let decrypted = decipher.update(encryptedContent, 'base64', 'utf8');
+    decrypted += decipher.final('utf8');
+
+    return decrypted;
   }
 
   /**
@@ -142,33 +112,19 @@ export class CryptoService {
     key: Buffer,
     options?: EncryptionOptions,
   ): EncryptedData {
-    if (isWebEnvironment) {
-      // Web环境中的模拟加密
-      const timestamp = Date.now().toString();
-      const dataWithTimestamp = `${data}|${timestamp}`;
-      const encryptedData = Buffer.from(dataWithTimestamp).toString('base64');
+    const algorithm = options?.algorithm || 'aes-256-cbc';
+    const iv = crypto.randomFillSync(new Uint8Array(16));
 
-      return {
-        encrypted: encryptedData,
-        iv: Buffer.from('web_simulation_iv').toString('base64'), // 模拟IV
-        algorithm: options?.algorithm || 'aes-256-cbc',
-        timestamp: Date.now(),
-      };
-    } else {
-      const algorithm = options?.algorithm || 'aes-256-cbc';
-      const iv = crypto.randomFillSync(new Uint8Array(16));
+    const cipher = crypto.createCipheriv(algorithm, key, iv);
+    let encrypted = cipher.update(data, 'utf8', 'base64');
+    encrypted += cipher.final('base64');
 
-      const cipher = crypto.createCipheriv(algorithm, key, iv);
-      let encrypted = cipher.update(data, 'utf8', 'base64');
-      encrypted += cipher.final('base64');
-
-      return {
-        encrypted: encrypted,
-        iv: Buffer.from(iv).toString('base64'),
-        algorithm,
-        timestamp: Date.now(),
-      };
-    }
+    return {
+      encrypted: encrypted,
+      iv: Buffer.from(iv).toString('base64'),
+      algorithm,
+      timestamp: Date.now(),
+    };
   }
 
   /**
@@ -178,29 +134,18 @@ export class CryptoService {
    * @returns 解密后的原始数据
    */
   static decryptWithMetadata(encryptedData: EncryptedData, key: Buffer): string {
-    if (isWebEnvironment) {
-      // Web环境中的模拟解密
-      try {
-        const decoded = Buffer.from(encryptedData.encrypted, 'base64').toString('utf8');
-        const parts = decoded.split('|');
-        return parts[0]; // 返回原始数据部分
-      } catch (error) {
-        throw new Error(`Web解密失败: ${(error as Error).message}`);
-      }
-    } else {
-      const iv = Buffer.from(encryptedData.iv, 'base64');
-      const algorithm = encryptedData.algorithm || 'aes-256-cbc';
+    const iv = Buffer.from(encryptedData.iv, 'base64');
+    const algorithm = encryptedData.algorithm || 'aes-256-cbc';
 
-      // 创建解密器
-      const decipher = crypto.createDecipheriv(algorithm, key, iv);
-      decipher.setAutoPadding(true);
+    // 创建解密器
+    const decipher = crypto.createDecipheriv(algorithm, key, iv);
+    decipher.setAutoPadding(true);
 
-      // 解密数据
-      let decrypted = decipher.update(encryptedData.encrypted, 'base64', 'utf8');
-      decrypted += decipher.final('utf8');
+    // 解密数据
+    let decrypted = decipher.update(encryptedData.encrypted, 'base64', 'utf8');
+    decrypted += decipher.final('utf8');
 
-      return decrypted;
-    }
+    return decrypted;
   }
 
   /**
@@ -215,21 +160,14 @@ export class CryptoService {
     keyString: string,
     algorithm: string = 'aes-256-cbc',
   ): string {
-    if (isWebEnvironment) {
-      // Web环境中的模拟加密
-      const timestamp = Date.now().toString();
-      const dataWithTimestamp = `${data}|${timestamp}`;
-      return Buffer.from(dataWithTimestamp).toString('base64');
-    } else {
-      const key = Buffer.from(keyString, 'utf8');
-      // 确保密钥长度正确
-      if (key.length !== 32 && algorithm.includes('256')) {
-        // 如果密钥长度不足32字节，进行填充或哈希处理
-        const hash = Buffer.from(crypto.createHash('sha256').update(keyString).digest());
-        return this.encrypt(data, hash, algorithm);
-      }
-      return this.encrypt(data, key, algorithm);
+    const key = Buffer.from(keyString, 'utf8');
+    // 确保密钥长度正确
+    if (key.length !== 32 && algorithm.includes('256')) {
+      // 如果密钥长度不足32字节，进行填充或哈希处理
+      const hash = Buffer.from(crypto.createHash('sha256').update(keyString).digest());
+      return this.encrypt(data, hash, algorithm);
     }
+    return this.encrypt(data, key, algorithm);
   }
 
   /**
@@ -244,25 +182,14 @@ export class CryptoService {
     keyString: string,
     algorithm: string = 'aes-256-cbc',
   ): string {
-    if (isWebEnvironment) {
-      // Web环境中的模拟解密
-      try {
-        const decoded = Buffer.from(encryptedText, 'base64').toString('utf8');
-        const parts = decoded.split('|');
-        return parts[0]; // 返回原始数据部分
-      } catch (error) {
-        throw new Error(`Web解密失败: ${(error as Error).message}`);
-      }
-    } else {
-      const key = Buffer.from(keyString, 'utf8');
-      // 确保密钥长度正确
-      if (key.length !== 32 && algorithm.includes('256')) {
-        // 如果密钥长度不足32字节，进行填充或哈希处理
-        const hash = Buffer.from(crypto.createHash('sha256').update(keyString).digest());
-        return this.decrypt(encryptedText, hash, algorithm);
-      }
-      return this.decrypt(encryptedText, key, algorithm);
+    const key = Buffer.from(keyString, 'utf8');
+    // 确保密钥长度正确
+    if (key.length !== 32 && algorithm.includes('256')) {
+      // 如果密钥长度不足32字节，进行填充或哈希处理
+      const hash = Buffer.from(crypto.createHash('sha256').update(keyString).digest());
+      return this.decrypt(encryptedText, hash, algorithm);
     }
+    return this.decrypt(encryptedText, key, algorithm);
   }
 
   /**
@@ -271,17 +198,7 @@ export class CryptoService {
    * @returns 随机字符串密钥
    */
   static generateRandomStringKey(length: number = 32): string {
-    if (isWebEnvironment) {
-      // Web环境中的模拟实现
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-      let result = '';
-      for (let i = 0; i < length; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      return result;
-    } else {
-      const key = this.generateRandomKey(length);
-      return key.toString('hex').substring(0, length); // 返回指定长度的十六进制字符串
-    }
+    const key = this.generateRandomKey(length);
+    return key.toString('hex').substring(0, length); // 返回指定长度的十六进制字符串
   }
 }
