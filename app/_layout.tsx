@@ -9,6 +9,7 @@ import 'react-native-get-random-values';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
+import { initLocalStorage } from '@/services';
 
 if (typeof global.Buffer === 'undefined') {
   global.Buffer = Buffer;
@@ -31,6 +32,11 @@ export default function RootLayout() {
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
   });
+
+  // 初始化本地存储
+  useEffect(() => {
+    initLocalStorage().catch(console.error);
+  }, []);
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {

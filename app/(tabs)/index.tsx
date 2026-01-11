@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   Platform,
   ScrollView,
@@ -11,6 +12,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Note } from '@/types/notes/NoteTypes';
+import { getNotes, synchronizeNotes } from '@/services';
 
 // 获取屏幕宽度用于计算卡片尺寸
 const { width } = Dimensions.get('window');
@@ -32,14 +35,6 @@ const truncateText = (text: string, maxLength: number) => {
   return text.substring(0, maxLength) + '...';
 };
 
-// 示例笔记数据 - 包含ID、标题、内容和日期
-const sampleNotes = [
-  { id: '1', title: '购物清单', content: '牛奶、面包、水果', date: '2024-01-05' },
-  { id: '2', title: '会议记录', content: '讨论项目进度和下一步计划', date: '2024-01-04' },
-  { id: '3', title: '学习计划', content: 'React Native 开发进阶', date: '2024-01-03' },
-  { id: '4', title: '旅行计划', content: '下个月的旅行目的地安排', date: '2024-01-02' },
-];
-
 /**
  * 首页屏幕组件 - 显示笔记列表
  * @returns JSX元素
@@ -49,6 +44,45 @@ export default function IndexScreen() {
   const [activeTab, setActiveTab] = useState<'notes' | 'tasks'>('notes');
   // 获取路由导航对象
   const router = useRouter();
+  // 管理笔记数据状态
+  const [notes, setNotes] = useState<Note[]>([]);
+  // 管理搜索关键词状态
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // 加载笔记数据
+  useEffect(() => {
+    loadNotes();
+  }, [searchQuery]);
+
+  // 加载笔记数据函数
+  const loadNotes = async () => {
+    try {
+      const result = await getNotes({ search: searchQuery });
+      setNotes(result.data);
+    } catch (error) {
+      console.error('加载笔记失败:', error);
+      Alert.alert('错误', '加载笔记失败，请检查网络连接。');
+    }
+  };
+
+  // 处理搜索
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+  };
+
+  // 同步笔记
+  const handleSync = async () => {
+    try {
+      Alert.alert('同步中', '正在同步笔记，请稍候...');
+      const result = await synchronizeNotes();
+      Alert.alert('同步完成', `同步成功！更新了 ${result.updates.length} 条笔记。`);
+      // 重新加载笔记
+      loadNotes();
+    } catch (error) {
+      console.error('同步失败:', error);
+      Alert.alert('同步失败', '笔记同步失败，请检查网络连接和API设置。');
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -60,14 +94,19 @@ export default function IndexScreen() {
           style={styles.searchInput}
           placeholderTextColor="#888"
           underlineColorAndroid="transparent"
+          value={searchQuery}
+          onChangeText={handleSearch}
         />
+        <TouchableOpacity onPress={handleSync} style={styles.syncButton}>
+          <Ionicons name="sync" size={20} color="#888" />
+        </TouchableOpacity>
       </View>
 
       {/* 内容区域 - 包含笔记网格 */}
       <ScrollView style={styles.contentContainer}>
         <View style={styles.gridContainer}>
-          {/* 遍历示例笔记数据，渲染笔记卡片 */}
-          {sampleNotes.map((note) => (
+          {/* 遍历笔记数据，渲染笔记卡片 */}
+          {notes.map((note) => (
             <TouchableOpacity
               key={note.id}
               style={styles.card}
@@ -88,7 +127,7 @@ export default function IndexScreen() {
                 {truncateText(note.content, 30)}
               </Text>
               {/* 笔记日期 */}
-              <Text style={styles.cardDate}>{note.date}</Text>
+              <Text style={styles.cardDate}>{new Date(note.updated_at).toLocaleDateString()}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -139,6 +178,11 @@ const styles = StyleSheet.create({
     color: '#333',
     borderWidth: 0,
     outlineWidth: 0,
+  },
+  // 同步按钮样式
+  syncButton: {
+    marginLeft: 10,
+    padding: 5,
   },
   // 内容容器样式
   contentContainer: {

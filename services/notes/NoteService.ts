@@ -6,13 +6,14 @@ import {
   GetNotesQuery,
   Note,
   PaginatedResponse,
+  SyncNotesRequest,
+  SyncNotesResponse,
   UpdateNoteRequest,
   UpdateNoteResponse,
 } from '@/types/notes/NoteTypes';
 import { api } from '../api/ApiClient';
 
 // 笔记服务模块
-// 提供对笔记的增删改查功能
 
 export const exportAllNotes = (): Promise<ExportAllNotesResponse> =>
   api.get<ExportAllNotesResponse>('/notes/export/all').then((res) => res.data);
@@ -49,6 +50,9 @@ export const updateNote = (id: string, data: UpdateNoteRequest) =>
 export const deleteNote = (id: string) =>
   api.delete<DeleteNoteResponse>(`/notes/${id}`).then((res) => res.data);
 
+export const syncNotes = (data: SyncNotesRequest) =>
+  api.post<SyncNotesResponse>('/notes/sync', data).then((res) => res.data);
+
 export default {
   exportAllNotes,
   downloadAllNotes,
@@ -57,4 +61,5 @@ export default {
   createNote,
   updateNote,
   deleteNote,
+  syncNotes,
 };

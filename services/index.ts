@@ -14,6 +14,9 @@ export {
 // 笔记服务对象
 export { default as noteService } from './notes/NoteService';
 
+// 同步服务模块
+export { default as syncService, synchronizeNotes, uploadNotesForSync } from './notes/SyncService';
+
 // 加密服务模块
 export { CryptoService } from './crypto/CryptoService';
 
@@ -60,3 +63,32 @@ export type {
   CryptoConfig,
   EncryptionOptions,
 } from '../types/crypto/CryptoTypes';
+
+// 本地存储服务
+export {
+  initLocalStorage,
+  getNotes as getLocalNotes,
+  getNoteById as getLocalNoteById,
+  createNote as createLocalNote,
+  updateNote as updateLocalNote,
+  deleteNote as deleteLocalNote,
+  exportAllNotes as exportLocalNotes,
+  downloadAllNotes as downloadLocalNotes,
+  getNotesStats,
+  clearAllNotes as clearLocalNotes,
+} from './local/LocalNoteService';
+
+// 数据库服务
+export {
+  initDatabase,
+  getAllNotes,
+  getNoteById as getDbNoteById,
+  searchNotes,
+  createNote as createDbNote,
+  updateNote as updateDbNote,
+  deleteNote as deleteDbNote,
+  exportAllNotes as exportDbNotes,
+  clearAllNotes as clearDbNotes,
+  getNotesCount,
+  closeDatabase,
+} from './database/DatabaseService';

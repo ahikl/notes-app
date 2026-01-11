@@ -3,6 +3,9 @@ export interface Note {
   id: string;
   title: string;
   content: string;
+  is_encrypted: number;
+  sync_status: number;
+  is_deleted: number;
   created_at: string;
   updated_at: string;
 }
@@ -64,4 +67,16 @@ export interface GetNotesQuery {
   page?: number;
   limit?: number;
   search?: string;
+}
+
+// 同步笔记请求参数类型
+export interface SyncNotesRequest {
+  clientNotes: Note[];
+}
+
+// 同步笔记响应类型
+export interface SyncNotesResponse {
+  success: boolean;
+  updates: Note[];
+  syncedIds: string[];
 }

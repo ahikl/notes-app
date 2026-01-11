@@ -1,12 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { Alert, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { HeaderStyles } from '@/constants/HeaderStyles';
+import LocalStorageDemo from '@/components/LocalStorageDemo';
+import { synchronizeNotes } from '@/services';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const [showLocalStorageDemo, setShowLocalStorageDemo] = useState(false);
+
+  const handleSyncNotes = async () => {
+    try {
+      Alert.alert('同步中', '正在同步笔记，请稍候...');
+      const result = await synchronizeNotes();
+      Alert.alert('同步完成', `同步成功！更新了 ${result.updates.length} 条笔记。`);
+    } catch (error) {
+      console.error('同步失败:', error);
+      Alert.alert('同步失败', '笔记同步失败，请检查网络连接和API设置。');
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -24,11 +38,34 @@ export default function SettingsScreen() {
             <Ionicons name="chevron-forward" size={20} color="#ccc" />
           </View>
         </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => setShowLocalStorageDemo(true)}>
+          <View style={styles.optionItem}>
+            <Text style={styles.optionText}>本地存储测试</Text>
+            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          </View>
+        </TouchableOpacity>
+
         <View style={styles.optionItem}>
           <Text style={styles.optionText}>通知设置</Text>
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
         </View>
+
+        <TouchableOpacity onPress={handleSyncNotes}>
+          <View style={styles.optionItem}>
+            <Text style={styles.optionText}>同步笔记</Text>
+            <Ionicons name="sync" size={20} color="#ccc" />
+          </View>
+        </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={showLocalStorageDemo}
+        animationType="slide"
+        onRequestClose={() => setShowLocalStorageDemo(false)}
+      >
+        <LocalStorageDemo onBack={() => setShowLocalStorageDemo(false)} />
+      </Modal>
     </SafeAreaView>
   );
 }
