@@ -1,7 +1,3 @@
-// 服务层统一导出入口
-// 按功能模块组织导出
-
-// API客户端配置
 export { default as api, api as getApiClient } from './api/ApiClient';
 
 // 笔记服务模块
@@ -13,28 +9,31 @@ export {
   getNoteById,
   getNotes,
   updateNote,
+  syncNotes,
+  batchDeleteNotes,
+  batchUpsertNotes,
 } from './notes/NoteService';
 
 // 笔记服务对象
 export { default as noteService } from './notes/NoteService';
+
+// 同步服务模块
+export { default as syncService, synchronizeNotes, uploadNotesForSync } from './notes/SyncService';
+
+// 定时任务服务模块
+export { default as schedulerService } from './scheduler/SchedulerService';
 
 // 加密服务模块
 export { CryptoService } from './crypto/CryptoService';
 
 // 加密笔记服务模块
 export { EncryptedNoteService } from './crypto/EncryptedNoteService';
-
-// 认证工具模块
 export {
   getApiKey,
   getApiKeyWithFallback,
-  getBaseUrl,
   isValidApiKey,
-  isValidBaseUrl,
   removeApiKey,
-  removeBaseUrl,
   saveApiKey,
-  saveBaseUrl,
 } from '../utils/auth/AuthUtils';
 
 // 加密工具函数
@@ -50,6 +49,15 @@ export {
   generateRandomStringKey,
 } from '../utils/crypto/EncryptionUtils';
 
+// 本地笔记服务
+export {
+  deleteNote as localDeleteNote,
+  batchDeleteNotes as localBatchDeleteNotes,
+  safelyDeleteNote,
+  batchSafelyDeleteNotes,
+  initLocalStorage,
+} from './local/LocalNoteService';
+
 // 类型定义
 export type {
   CreateNoteRequest,
@@ -61,12 +69,13 @@ export type {
   PaginatedResponse,
   UpdateNoteRequest,
   UpdateNoteResponse,
+  BatchDeleteNoteRequest,
+  BatchDeleteNoteResponse,
+  BatchOperationNoteRequest,
+  BatchOperationNoteResponse,
+  SyncNotesRequest,
+  SyncNotesResponse,
 } from '../types/notes/NoteTypes';
 
 // 加密类型定义
-export type {
-  EncryptionKey,
-  EncryptedData,
-  CryptoConfig,
-  EncryptionOptions,
-} from '../types/crypto/CryptoTypes';
+export type { EncryptionKey, EncryptedData } from '../types/crypto/CryptoTypes';

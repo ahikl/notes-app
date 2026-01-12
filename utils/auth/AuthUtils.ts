@@ -2,9 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 
 // 存储键名和默认值
-const API_KEY_STORAGE_KEY = 'notes_api_key';
-const BASE_URL_STORAGE_KEY = 'notes_base_url';
-const DEFAULT_BASE_URL = '/api/notes';
+const API_KEY_STORAGE_KEY = 'notes_api_key'; // API密钥存储的键名
+const API_URL_STORAGE_KEY = 'notes_api_url'; // API URL存储的键名
+const ENCRYPTION_KEY_STORAGE_KEY = 'notes_encryption_key'; // 加密密钥存储的键名
 const API_KEY_REGEX = /^[A-Za-z0-9\-_]+$/;
 
 // 保存API密钥到安全存储中
@@ -29,31 +29,36 @@ export const getApiKeyWithFallback = async (): Promise<string | null> => {
   return envApiKey && isValidApiKey(envApiKey) ? envApiKey : await getApiKey();
 };
 
-// 保存Base URL到存储中
-export const saveBaseUrl = async (baseUrl: string): Promise<void> =>
-  AsyncStorage.setItem(BASE_URL_STORAGE_KEY, baseUrl);
+// 添加API URL的存储相关函数
+// 保存API URL到存储中
+export const saveApiUrl = async (apiUrl: string): Promise<void> =>
+  AsyncStorage.setItem(API_URL_STORAGE_KEY, apiUrl);
 
-// 从存储中获取Base URL，确保以斜杠结尾
-export const getBaseUrl = async (): Promise<string> => {
-  const baseUrl = await AsyncStorage.getItem(BASE_URL_STORAGE_KEY);
-  const result = baseUrl ?? DEFAULT_BASE_URL;
-  return result.replace(/\/?$/, '/');
-};
+// 从存储中获取API URL
+export const getApiUrl = async (): Promise<string | null> =>
+  AsyncStorage.getItem(API_URL_STORAGE_KEY);
 
-// 删除存储的Base URL（恢复为默认值）
-export const removeBaseUrl = async (): Promise<void> =>
-  AsyncStorage.removeItem(BASE_URL_STORAGE_KEY);
-
-// 验证Base URL格式
-export const isValidBaseUrl = (baseUrl: string): boolean => {
+// 验证API URL格式
+export const isValidApiUrl = (apiUrl: string): boolean => {
   try {
     // 开发环境允许HTTP和HTTPS，生产环境只允许HTTPS
     const isDevelopment = process.env.NODE_ENV === 'development';
     const isValidProtocol = isDevelopment
-      ? baseUrl.startsWith('http://') || baseUrl.startsWith('https://')
-      : baseUrl.startsWith('https://');
-    return isValidProtocol ? !!new URL(baseUrl) : baseUrl.length > 0;
+      ? apiUrl.startsWith('http://') || apiUrl.startsWith('https://')
+      : apiUrl.startsWith('https://');
+    return isValidProtocol ? !!new URL(apiUrl) : apiUrl.length > 0;
   } catch {
     return false;
   }
 };
+
+// 添加加密密钥的存储相关函数
+// 保存加密密钥到安全存储中
+export const saveEncryptionKey = async (encryptionKey: string): Promise<void> =>
+  SecureStore.setItemAsync(ENCRYPTION_KEY_STORAGE_KEY, encryptionKey);
+
+// 从安全存储中获取加密密钥
+export const getEncryptionKey = async (): Promise<string | null> =>
+  SecureStore.getItemAsync(ENCRYPTION_KEY_STORAGE_KEY);
+
+// 删除存储的加密密钥
