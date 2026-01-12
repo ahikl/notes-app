@@ -9,6 +9,9 @@ export {
   getNoteById,
   getNotes,
   updateNote,
+  syncNotes,
+  batchDeleteNotes,
+  batchUpsertNotes,
 } from './notes/NoteService';
 
 // 笔记服务对象
@@ -16,6 +19,9 @@ export { default as noteService } from './notes/NoteService';
 
 // 同步服务模块
 export { default as syncService, synchronizeNotes, uploadNotesForSync } from './notes/SyncService';
+
+// 定时任务服务模块
+export { default as schedulerService } from './scheduler/SchedulerService';
 
 // 加密服务模块
 export { CryptoService } from './crypto/CryptoService';
@@ -43,6 +49,15 @@ export {
   generateRandomStringKey,
 } from '../utils/crypto/EncryptionUtils';
 
+// 本地笔记服务
+export {
+  deleteNote as localDeleteNote,
+  batchDeleteNotes as localBatchDeleteNotes,
+  safelyDeleteNote,
+  batchSafelyDeleteNotes,
+  initLocalStorage,
+} from './local/LocalNoteService';
+
 // 类型定义
 export type {
   CreateNoteRequest,
@@ -54,41 +69,13 @@ export type {
   PaginatedResponse,
   UpdateNoteRequest,
   UpdateNoteResponse,
+  BatchDeleteNoteRequest,
+  BatchDeleteNoteResponse,
+  BatchOperationNoteRequest,
+  BatchOperationNoteResponse,
+  SyncNotesRequest,
+  SyncNotesResponse,
 } from '../types/notes/NoteTypes';
 
 // 加密类型定义
-export type {
-  EncryptionKey,
-  EncryptedData,
-  CryptoConfig,
-  EncryptionOptions,
-} from '../types/crypto/CryptoTypes';
-
-// 本地存储服务
-export {
-  initLocalStorage,
-  getNotes as getLocalNotes,
-  getNoteById as getLocalNoteById,
-  createNote as createLocalNote,
-  updateNote as updateLocalNote,
-  deleteNote as deleteLocalNote,
-  exportAllNotes as exportLocalNotes,
-  downloadAllNotes as downloadLocalNotes,
-  getNotesStats,
-  clearAllNotes as clearLocalNotes,
-} from './local/LocalNoteService';
-
-// 数据库服务
-export {
-  initDatabase,
-  getAllNotes,
-  getNoteById as getDbNoteById,
-  searchNotes,
-  createNote as createDbNote,
-  updateNote as updateDbNote,
-  deleteNote as deleteDbNote,
-  exportAllNotes as exportDbNotes,
-  clearAllNotes as clearDbNotes,
-  getNotesCount,
-  closeDatabase,
-} from './database/DatabaseService';
+export type { EncryptionKey, EncryptedData } from '../types/crypto/CryptoTypes';

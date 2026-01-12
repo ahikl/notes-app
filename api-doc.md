@@ -214,7 +214,43 @@ curl -X DELETE \
 }
 ```
 
-### 6. 笔记同步
+### 6. 批量删除笔记
+
+**DELETE** `/api/notes/batch`
+
+#### 请求体
+
+```json
+{
+  "ids": ["550e8400-e29b-41d4-a716-446655440000", "550e8400-e29b-41d4-a716-446655440001"]
+}
+```
+
+#### 请求示例
+
+```bash
+curl -X DELETE \
+  "https://your-domain.com/api/notes/batch" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ids": [
+      "550e8400-e29b-41d4-a716-446655440000",
+      "550e8400-e29b-41d4-a716-446655440001"
+    ]
+  }'
+```
+
+#### 响应示例
+
+```json
+{
+  "success": true,
+  "deletedCount": 2
+}
+```
+
+### 7. 笔记同步
 
 **POST** `/api/notes/sync`
 
@@ -275,7 +311,7 @@ curl -X POST \
 }
 ```
 
-### 7. 导出所有笔记
+### 8. 导出所有笔记
 
 **GET** `/api/notes/export/all`
 
@@ -304,6 +340,73 @@ curl -X GET \
       "updated_at": "2025-12-24T05:43:29.724Z"
     }
   ]
+}
+```
+
+### 9. 批量插入或更新笔记
+
+**POST** `/api/notes/batch`
+
+#### 请求体
+
+```json
+{
+  "notes": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "title": "笔记标题",
+      "content": "笔记内容",
+      "is_encrypted": 0,
+      "created_at": "2025-12-24T05:43:29.724Z",
+      "updated_at": "2025-12-24T05:43:29.724Z"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "title": "另一个笔记",
+      "content": "另一个笔记的内容",
+      "is_encrypted": 1,
+      "created_at": "2025-12-24T05:43:29.724Z",
+      "updated_at": "2025-12-24T05:43:29.724Z"
+    }
+  ]
+}
+```
+
+#### 请求示例
+
+```bash
+curl -X POST \
+  "https://your-domain.com/api/notes/batch" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "notes": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "title": "批量插入的笔记",
+        "content": "这是批量插入的笔记内容",
+        "is_encrypted": 0,
+        "created_at": "2025-12-24T05:43:29.724Z",
+        "updated_at": "2025-12-24T05:43:29.724Z"
+      },
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440001",
+        "title": "另一个批量插入的笔记",
+        "content": "这是另一个批量插入的笔记内容",
+        "is_encrypted": 1,
+        "created_at": "2025-12-24T05:43:29.724Z",
+        "updated_at": "2025-12-24T05:43:29.724Z"
+      }
+    ]
+  }'
+```
+
+#### 响应示例
+
+```json
+{
+  "success": true,
+  "insertedUpdatedCount": 2
 }
 ```
 

@@ -1,12 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { batchDeleteNotes } from '@/services';
 import {
-  createLocalNote,
-  deleteLocalNote,
-  getLocalNotes,
+  createNote as createLocalNote,
+  deleteNote as deleteLocalNote,
+  getNotes as getLocalNotes,
   getNotesStats,
-  updateLocalNote,
-} from '@/services';
+  updateNote as updateLocalNote,
+} from '@/services/local/LocalNoteService';
 import { CreateNoteRequest, Note } from '@/types/notes/NoteTypes';
 import { useNotification } from '@/components/NotificationManager';
 
@@ -22,7 +23,7 @@ const LocalStorageDemo: React.FC<LocalStorageDemoProps> = ({ onBack }) => {
   const { showSuccess, showError, showInfo } = useNotification();
 
   // 加载笔记列表
-  const loadNotes = async () => {
+  const loadNotes = useCallback(async () => {
     try {
       setLoading(true);
       const result = await getLocalNotes();
@@ -36,7 +37,7 @@ const LocalStorageDemo: React.FC<LocalStorageDemoProps> = ({ onBack }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setLoading, setNotes, setStats, showError]);
 
   // 创建示例笔记
   const createSampleNote = async () => {
@@ -92,6 +93,8 @@ const LocalStorageDemo: React.FC<LocalStorageDemoProps> = ({ onBack }) => {
       showSuccess('笔记删除成功！');
       await loadNotes();
     } catch (error) {
+      console.error('删除笔记失败:', error);
+      // 不显示删除错误的弹窗，仅记录日志
       showError('删除笔记失败: ' + (error as Error).message);
     }
   };
@@ -106,9 +109,34 @@ const LocalStorageDemo: React.FC<LocalStorageDemoProps> = ({ onBack }) => {
     }
   };
 
+  // 批量删除笔记（示例：删除前3个笔记）
+  const batchDeleteNotesExample = async () => {
+    if (notes.length === 0) {
+      showInfo('没有可删除的笔记');
+      return;
+    }
+
+    try {
+      const noteIdsToDelete = notes.slice(0, Math.min(3, notes.length)).map((note) => note.id);
+      await batchDeleteNotes(noteIdsToDelete);
+      showSuccess(`成功批量删除 ${noteIdsToDelete.length} 条笔记！`);
+      await loadNotes(); // 重新加载列表
+    } catch (error) {
+      console.error('批量删除笔记失败:', error);
+      // 不显示批量删除错误的弹窗，仅记录日志
+      showError('批量删除笔记失败: ' + (error as Error).message);
+    }
+  };
+
   useEffect(() => {
-    loadNotes();
-  }, []);
+    const fetchData = async () => {
+      await loadNotes();
+    };
+
+    fetchData().catch((error) => {
+      console.error('加载笔记时发生错误:', error);
+    });
+  }, [loadNotes]);
 
   return (
     <View style={styles.container}>
@@ -162,6 +190,14 @@ const LocalStorageDemo: React.FC<LocalStorageDemoProps> = ({ onBack }) => {
           disabled={loading}
         >
           <Text style={styles.buttonText}>刷新列表</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.button, styles.dangerButton]}
+          onPress={batchDeleteNotesExample}
+          disabled={notes.length === 0 || loading}
+        >
+          <Text style={styles.buttonText}>批量删除笔记(前3个)</Text>
         </TouchableOpacity>
       </View>
 
@@ -239,6 +275,9 @@ const styles = StyleSheet.create({
   },
   textButton: {
     backgroundColor: '#f0f0f0',
+  },
+  dangerButton: {
+    backgroundColor: '#FF3B30',
   },
   buttonText: {
     color: 'white',

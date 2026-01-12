@@ -42,10 +42,35 @@ export interface DeleteNoteResponse {
   success: boolean;
 }
 
-// API错误响应类型
-export interface ErrorResponse {
-  error: string;
+// 批量删除笔记响应类型
+export interface BatchDeleteNoteResponse {
+  success: boolean;
+  deletedCount: number;
 }
+
+// 批量安全删除笔记响应类型
+export interface BatchSafelyDeleteNoteResponse {
+  success: boolean;
+  deletedCount: number;
+  results: { id: string; success: boolean; message: string }[];
+}
+
+// 批量操作笔记请求类型
+export interface BatchOperationNoteRequest {
+  notes: Note[];
+}
+
+// 批量操作笔记响应类型
+export interface BatchOperationNoteResponse {
+  success: boolean;
+  insertedUpdatedCount: number;
+}
+
+// 批量删除笔记请求类型
+export interface BatchDeleteNoteRequest {
+  ids: string[];
+}
+
 // 创建笔记请求参数类型
 export interface CreateNoteRequest {
   title: string;
@@ -54,6 +79,7 @@ export interface CreateNoteRequest {
   created_at: string;
   updated_at: string;
 }
+
 // 更新笔记请求参数类型
 export interface UpdateNoteRequest {
   title?: string;

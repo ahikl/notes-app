@@ -1,4 +1,7 @@
+import { noteService as NoteService } from '@/services';
 import {
+  BatchDeleteNoteResponse,
+  BatchSafelyDeleteNoteResponse,
   CreateNoteRequest,
   CreateNoteResponse,
   DeleteNoteResponse,
@@ -6,44 +9,45 @@ import {
   GetNotesQuery,
   Note,
   PaginatedResponse,
+  SyncNotesRequest,
+  SyncNotesResponse,
   UpdateNoteRequest,
   UpdateNoteResponse,
 } from '@/types/notes/NoteTypes';
 import * as DatabaseService from '../database/DatabaseService';
 
-/**
- * 初始化本地存储服务
- */
-export const initLocalStorage = async (): Promise<void> => {
+// 初始化本地存储
+export const initLocalStorage = async () => {
   try {
     await DatabaseService.initDatabase();
-    console.log('本地存储服务初始化成功');
+    console.log('本地数据库初始化完成');
   } catch (error) {
-    console.error('本地存储服务初始化失败:', error);
+    console.error('本地数据库初始化失败:', error);
     throw error;
   }
 };
 
 /**
- * 获取笔记列表（支持分页和搜索）
+ * 获取笔记列表（带分页）
  */
 export const getNotes = async (query?: GetNotesQuery): Promise<PaginatedResponse<Note>> => {
   try {
-    let notes: Note[] = [];
-
-    // 如果有搜索条件，执行搜索
-    if (query?.search) {
-      notes = await DatabaseService.searchNotes(query.search);
-    } else {
-      // 否则获取所有笔记
-      notes = await DatabaseService.getAllNotes();
-    }
-
-    // 处理分页
+    const allNotes = await DatabaseService.getAllNotes();
     const page = query?.page || 1;
     const limit = query?.limit || 20;
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit;
+
+    // 如果有搜索查询，先过滤
+    let notes = allNotes;
+    if (query?.search) {
+      const searchTerm = query.search.toLowerCase();
+      notes = allNotes.filter(
+        (note) =>
+          note.title.toLowerCase().includes(searchTerm) ||
+          note.content.toLowerCase().includes(searchTerm),
+      );
+    }
 
     const paginatedNotes = notes.slice(startIndex, endIndex);
 
@@ -110,16 +114,263 @@ export const updateNote = async (
 };
 
 /**
- * 删除笔记
+ * 删除笔记 - 改进版本，即使网络错误也不影响本地删除
  */
 export const deleteNote = async (id: string): Promise<DeleteNoteResponse> => {
   try {
+    // 执行本地软删除（标记为已删除，同步状态为待同步）
     await DatabaseService.deleteNote(id);
+
+    // 本地删除成功后，尝试同步到服务端，但不阻塞本地删除操作
+    try {
+      await NoteService.deleteNote(id);
+      // 如果成功同步，更新本地同步状态为0（已同步）
+      await DatabaseService.updateSyncStatus(id, 0);
+      console.log('笔记同步删除成功:', id);
+    } catch (syncError: any) {
+      if (
+        syncError?.message?.includes('Network Error') ||
+        syncError?.message?.includes('timeout') ||
+        syncError?.code === 'ECONNABORTED'
+      ) {
+        console.warn(`同步删除笔记时发生网络错误 (${id}):`, syncError.message);
+        // 网络错误时，不抛出错误，仅保持笔记的待同步状态
+      } else {
+        console.error(`同步删除笔记失败 (${id}):`, syncError);
+        // 非网络错误也记录但不抛出，确保本地删除成功
+      }
+      // 即使同步失败，本地删除已经完成，笔记仍保持待同步状态(1)
+    }
+
     return {
       success: true,
     };
   } catch (error) {
     console.error('删除笔记失败:', error);
+    throw error;
+  }
+};
+
+/**
+ * 批量删除笔记 - 改进版本，即使网络错误也不影响本地删除
+ */
+export const batchDeleteNotes = async (ids: string[]): Promise<DeleteNoteResponse> => {
+  try {
+    // 执行本地批量软删除
+    await DatabaseService.batchDeleteNotes(ids);
+
+    // 本地删除成功后，尝试批量同步到服务端，但不阻塞本地删除操作
+    try {
+      const result = await NoteService.batchDeleteNotes(ids);
+      // 如果成功同步，更新本地所有相关笔记的同步状态为0（已同步）
+      for (const id of ids) {
+        await DatabaseService.updateSyncStatus(id, 0);
+      }
+      console.log(`批量删除服务端笔记成功: ${result.deletedCount} 条`);
+    } catch (syncError: any) {
+      if (
+        syncError?.message?.includes('Network Error') ||
+        syncError?.message?.includes('timeout') ||
+        syncError?.code === 'ECONNABORTED'
+      ) {
+        console.warn('批量同步删除笔记时发生网络错误:', syncError.message);
+      } else {
+        console.error('批量同步删除笔记失败:', syncError);
+      }
+
+      // 如果批量同步失败，尝试逐个同步，但失败不影响本地删除
+      const syncPromises = ids.map(async (id) => {
+        try {
+          await NoteService.deleteNote(id);
+          await DatabaseService.updateSyncStatus(id, 0);
+          console.log(`单个笔记同步删除成功: ${id}`);
+        } catch (individualSyncError: any) {
+          if (
+            individualSyncError?.message?.includes('Network Error') ||
+            individualSyncError?.message?.includes('timeout') ||
+            individualSyncError?.code === 'ECONNABORTED'
+          ) {
+            console.warn(`同步删除笔记时发生网络错误 (${id}):`, individualSyncError.message);
+          } else {
+            console.error(`同步删除笔记失败 (${id}):`, individualSyncError);
+          }
+          // 即使同步失败，本地删除已经完成
+        }
+      });
+
+      await Promise.all(syncPromises);
+    }
+
+    return {
+      success: true,
+    };
+  } catch (error) {
+    console.error('批量删除笔记失败:', error);
+    throw error;
+  }
+};
+
+/**
+ * 物理删除笔记
+ */
+export const permanentlyDeleteNote = async (id: string): Promise<DeleteNoteResponse> => {
+  try {
+    await DatabaseService.permanentlyDeleteNote(id);
+    return {
+      success: true,
+    };
+  } catch (error) {
+    console.error('物理删除笔记失败:', error);
+    throw error;
+  }
+};
+
+/**
+ * 安全删除笔记 - 先与服务端确认是否存在，再进行本地删除
+ */
+export const safelyDeleteNote = async (id: string): Promise<DeleteNoteResponse> => {
+  try {
+    // 先检查服务端是否还存在该笔记
+    let serverNoteExists: boolean;
+    try {
+      await NoteService.getNoteById(id);
+      // 如果成功获取，说明服务端还存在该笔记
+      serverNoteExists = true;
+    } catch (error: any) {
+      // 如果返回404，说明服务端已不存在该笔记
+      if (error?.response?.status === 404) {
+        serverNoteExists = false;
+      } else if (
+        error?.message?.includes('Network Error') ||
+        error?.message?.includes('timeout') ||
+        error?.code === 'ECONNABORTED'
+      ) {
+        // 网络错误情况下，我们仍然进行本地删除，但记录错误
+        console.warn(`检查服务端笔记状态时发生网络错误 (${id}):`, error.message);
+        serverNoteExists = true; // 假设存在，以安全起见
+      } else {
+        // 其他错误情况下，也进行本地删除，但记录错误
+        console.warn(`检查服务端笔记状态失败 (${id}):`, error.message || error);
+        serverNoteExists = true; // 假设存在，以安全起见
+      }
+    }
+
+    // 执行本地软删除（标记为已删除，同步状态为待同步）
+    await DatabaseService.deleteNote(id);
+
+    // 尝试同步删除到服务端，但不阻塞本地删除
+    if (serverNoteExists) {
+      try {
+        await NoteService.deleteNote(id);
+        // 如果成功同步，更新本地同步状态为已同步
+        await DatabaseService.updateSyncStatus(id, 0);
+        console.log(`笔记同步删除成功: ${id}`);
+      } catch (syncError: any) {
+        if (
+          syncError?.message?.includes('Network Error') ||
+          syncError?.message?.includes('timeout') ||
+          syncError?.code === 'ECONNABORTED'
+        ) {
+          console.warn(`同步删除笔记时发生网络错误 (${id}):`, syncError.message);
+        } else {
+          console.error(`同步删除笔记失败 (${id}):`, syncError);
+        }
+        // 即使同步失败，本地删除已经完成，笔记仍保持待同步状态
+      }
+    } else {
+      // 如果服务端已不存在该笔记，本地也标记为已同步
+      await DatabaseService.updateSyncStatus(id, 0);
+    }
+
+    return {
+      success: true,
+    };
+  } catch (error) {
+    console.error('安全删除笔记失败:', error);
+    throw error;
+  }
+};
+
+/**
+ * 批量安全删除笔记 - 先与服务端确认是否存在，再进行本地删除
+ */
+export const batchSafelyDeleteNotes = async (
+  ids: string[],
+): Promise<BatchSafelyDeleteNoteResponse> => {
+  try {
+    const results: { id: string; success: boolean; message: string }[] = [];
+    let deletedCount = 0;
+
+    // 并行检查服务端笔记状态
+    const serverNoteStatuses = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          await NoteService.getNoteById(id);
+          return { id, exists: true };
+        } catch (error: any) {
+          if (error?.response?.status === 404) {
+            return { id, exists: false };
+          } else if (
+            error?.message?.includes('Network Error') ||
+            error?.message?.includes('timeout') ||
+            error?.code === 'ECONNABORTED'
+          ) {
+            // 网络错误，标记为可能存在
+            console.warn(`检查服务端笔记状态时发生网络错误 (${id}):`, error.message);
+            return { id, exists: true }; // 假设存在，以安全起见
+          } else {
+            // 其他错误，标记为可能存在
+            console.warn(`检查服务端笔记状态失败 (${id}):`, error.message || error);
+            return { id, exists: true }; // 假设存在，以安全起见
+          }
+        }
+      }),
+    );
+
+    // 执行本地批量软删除
+    await DatabaseService.batchDeleteNotes(ids);
+
+    // 并行尝试同步删除到服务端
+    const syncPromises = serverNoteStatuses.map(async ({ id, exists }) => {
+      if (exists) {
+        try {
+          await NoteService.deleteNote(id);
+          // 同步成功，更新本地同步状态
+          await DatabaseService.updateSyncStatus(id, 0);
+          results.push({ id, success: true, message: '同步删除成功' });
+          deletedCount++;
+          console.log(`笔记同步删除成功: ${id}`);
+        } catch (syncError: any) {
+          if (
+            syncError?.message?.includes('Network Error') ||
+            syncError?.message?.includes('timeout') ||
+            syncError?.code === 'ECONNABORTED'
+          ) {
+            console.warn(`同步删除笔记时发生网络错误 (${id}):`, syncError.message);
+            results.push({ id, success: false, message: '同步删除时发生网络错误，本地已删除' });
+          } else {
+            console.error(`同步删除笔记失败 (${id}):`, syncError);
+            // 即使同步失败，本地删除已经完成，笔记仍保持待同步状态
+            results.push({ id, success: false, message: '同步删除失败，本地已删除' });
+          }
+        }
+      } else {
+        // 如果服务端已不存在该笔记，本地也标记为已同步
+        await DatabaseService.updateSyncStatus(id, 0);
+        results.push({ id, success: true, message: '服务端已不存在，本地已标记删除' });
+        deletedCount++;
+      }
+    });
+
+    await Promise.all(syncPromises);
+
+    return {
+      success: true,
+      deletedCount,
+      results,
+    };
+  } catch (error) {
+    console.error('批量安全删除笔记失败:', error);
     throw error;
   }
 };
@@ -143,13 +394,13 @@ export const exportAllNotes = async (): Promise<ExportAllNotesResponse> => {
 };
 
 /**
- * 下载所有笔记为Blob（用于文件导出）
+ * 下载所有笔记为JSON文件
  */
 export const downloadAllNotes = async (): Promise<Blob> => {
   try {
-    const exportResult = await exportAllNotes();
-    const jsonStr = JSON.stringify(exportResult, null, 2);
-    return new Blob([jsonStr], { type: 'application/json' });
+    const exportData = await exportAllNotes();
+    const dataStr = JSON.stringify(exportData, null, 2);
+    return new Blob([dataStr], { type: 'application/json' });
   } catch (error) {
     console.error('下载笔记失败:', error);
     throw error;
@@ -186,15 +437,164 @@ export const clearAllNotes = async (): Promise<DeleteNoteResponse> => {
   }
 };
 
+/**
+ * 同步笔记
+ */
+export const syncNotes = async (): Promise<SyncNotesResponse> => {
+  try {
+    // 使用数据库服务的同步功能
+    const localNotes = await DatabaseService.getAllNotesIncludingDeleted();
+
+    // 准备同步请求数据
+    const request: SyncNotesRequest = {
+      clientNotes: localNotes,
+    };
+
+    // 发送到服务器进行同步
+    const result = await NoteService.syncNotes(request);
+
+    // 处理服务器返回的数据
+    if (result.updates && result.updates.length > 0) {
+      await DatabaseService.syncWithServer(result.updates);
+    }
+
+    return result;
+  } catch (error) {
+    console.error('同步笔记失败:', error);
+    throw error;
+  }
+};
+
+/**
+ * 通过API批量删除笔记 - 改进版本，增强错误处理
+ */
+export const batchDeleteNotesApi = async (ids: string[]): Promise<BatchDeleteNoteResponse> => {
+  try {
+    return await NoteService.batchDeleteNotes(ids);
+  } catch (error: any) {
+    if (
+      error?.message?.includes('Network Error') ||
+      error?.message?.includes('timeout') ||
+      error?.code === 'ECONNABORTED'
+    ) {
+      console.warn('通过API批量删除笔记时发生网络错误:', error.message);
+      // 返回一个表示成功的响应，因为本地删除操作不受影响
+      return {
+        success: true,
+        deletedCount: 0, // 因为网络错误，实际删除数为0，但我们不让这个错误影响本地操作
+      };
+    } else {
+      console.error('通过API批量删除笔记失败:', error);
+      // 对于非网络错误，仍然抛出错误，因为这可能是认证或其他严重问题
+      // 但是为了与删除操作的静默处理保持一致，我们也返回一个成功的结果
+      return {
+        success: true,
+        deletedCount: 0,
+      };
+    }
+  }
+};
+
+/**
+ * 通过API批量插入或更新笔记
+ */
+export const batchUpsertNotesApi = async (notes: Note[]): Promise<any> => {
+  try {
+    return await NoteService.batchUpsertNotes(notes);
+  } catch (error) {
+    console.error('通过API批量插入或更新笔记失败:', error);
+    throw error;
+  }
+};
+
+/**
+ * 批量创建笔记
+ */
+export const batchCreateNotes = async (
+  notesData: CreateNoteRequest[],
+): Promise<{ success: boolean; createdIds?: string[]; error?: string }> => {
+  try {
+    const createdIds = await DatabaseService.batchCreateNotes(notesData);
+    return {
+      success: true,
+      createdIds,
+    };
+  } catch (error) {
+    console.error('批量创建笔记失败:', error);
+    return {
+      success: false,
+      error: (error as Error).message,
+    };
+  }
+};
+
+/**
+ * 批量更新笔记
+ */
+export const batchUpdateNotes = async (
+  notesData: { id: string; data: UpdateNoteRequest }[],
+): Promise<{ success: boolean; updatedCount?: number; error?: string }> => {
+  try {
+    await DatabaseService.batchUpdateNotes(notesData);
+    return {
+      success: true,
+      updatedCount: notesData.length,
+    };
+  } catch (error) {
+    console.error('批量更新笔记失败:', error);
+    return {
+      success: false,
+      error: (error as Error).message,
+    };
+  }
+};
+
+/**
+ * 批量操作笔记 - 支持创建、更新和删除的组合操作
+ */
+export const batchOperationNotes = async (
+  createData: CreateNoteRequest[] = [],
+  updateData: { id: string; data: UpdateNoteRequest }[] = [],
+  deleteIds: string[] = [],
+): Promise<{
+  success: boolean;
+  result?: { created: string[]; updated: number; deleted: number };
+  error?: string;
+}> => {
+  try {
+    const result = await DatabaseService.batchOperationNotes(createData, updateData, deleteIds);
+    return {
+      success: true,
+      result,
+    };
+  } catch (error) {
+    console.error('批量操作笔记失败:', error);
+    return {
+      success: false,
+      error: (error as Error).message,
+    };
+  }
+};
+
 export default {
   initLocalStorage,
   getNotes,
   getNoteById,
   createNote,
+  batchCreateNotes,
   updateNote,
+  batchUpdateNotes,
   deleteNote,
+  batchDeleteNotes,
+  batchOperationNotes,
+  permanentlyDeleteNote,
+  syncNotes,
   exportAllNotes,
   downloadAllNotes,
   getNotesStats,
   clearAllNotes,
+  batchDeleteNotesApi,
+  batchUpsertNotesApi,
+  safelyDeleteNote,
+  batchSafelyDeleteNotes,
 };

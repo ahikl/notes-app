@@ -38,9 +38,6 @@ export const saveApiUrl = async (apiUrl: string): Promise<void> =>
 export const getApiUrl = async (): Promise<string | null> =>
   AsyncStorage.getItem(API_URL_STORAGE_KEY);
 
-// 删除存储的API URL
-export const removeApiUrl = async (): Promise<void> => AsyncStorage.removeItem(API_URL_STORAGE_KEY);
-
 // 验证API URL格式
 export const isValidApiUrl = (apiUrl: string): boolean => {
   try {
@@ -65,5 +62,3 @@ export const getEncryptionKey = async (): Promise<string | null> =>
   SecureStore.getItemAsync(ENCRYPTION_KEY_STORAGE_KEY);
 
 // 删除存储的加密密钥
-export const removeEncryptionKey = async (): Promise<void> =>
-  SecureStore.deleteItemAsync(ENCRYPTION_KEY_STORAGE_KEY);

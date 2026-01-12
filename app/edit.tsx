@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Modal,
@@ -15,12 +15,15 @@ import {
 import { HeaderStyles } from '@/constants/HeaderStyles';
 import { createNote, deleteNote, getNoteById, updateNote } from '@/services/local/LocalNoteService';
 import { useNotification } from '@/components/NotificationManager';
+import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
 
 export default function EditScreen() {
   const { id, title, content } = useLocalSearchParams();
   const router = useRouter();
   const { showSuccess, showError } = useNotification();
 
+  // 使用状态来跟踪实际的笔记ID，即使是从路由参数传入的ID为空
+  const [noteId, setNoteId] = useState((id as string) || '');
   const [noteTitle, setNoteTitle] = useState((title as string) || '');
   const [noteContent, setNoteContent] = useState((content as string) || '');
 
@@ -35,12 +38,11 @@ export default function EditScreen() {
   // 初始加密状态
   const [initialEncryptStatus, setInitialEncryptStatus] = useState(false);
 
-  // 预留选项状态，用于勾选框
   const [optionsState, setOptionsState] = useState({
     save: false,
     delete: false,
     share: false,
-    encrypt: false, // 初始为未加密，稍后更新
+    encrypt: false,
   });
 
   // 在组件加载时获取现有笔记的加密状态
@@ -87,8 +89,7 @@ export default function EditScreen() {
         await handleSaveNote();
         break;
       case 'delete':
-        // 删除笔记的逻辑
-        handleDeleteNote();
+        await handleDeleteNote();
         break;
       case 'encrypt':
         break;
@@ -119,12 +120,13 @@ export default function EditScreen() {
   // 状态管理弹窗
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // 添加一个状态来跟踪是否正在保存，防止重复保存
   const [isSaving, setIsSaving] = useState(false);
 
   // 保存笔记
-  const saveNote = async () => {
+  const saveNote = useCallback(async () => {
     // 防止重复保存
     if (isSaving) return;
     setIsSaving(true);
@@ -132,7 +134,7 @@ export default function EditScreen() {
     try {
       // 对于已存在的笔记，即使内容为空也应该保存（允许清空笔记）
       // 对于新笔记，如果内容和标题都为空则不保存
-      if (!id || id === '' || id === 'undefined') {
+      if (!noteId || noteId === '' || noteId === 'undefined') {
         if (!noteContent.trim() && !noteTitle.trim()) {
           return; // 新笔记且内容和标题都为空时不保存
         }
@@ -144,10 +146,10 @@ export default function EditScreen() {
         titleToUse = noteContent.trim().substring(0, 10) || '未命名笔记';
       }
 
-      if (id && id !== '' && id !== 'undefined') {
-        // 检查id是否存在且不是'undefined'字符串
+      if (noteId && noteId !== '' && noteId !== 'undefined') {
+        // 检查noteId是否存在且不是'undefined'字符串
         // 更新现有笔记
-        await updateNote(id as string, {
+        await updateNote(noteId as string, {
           title: titleToUse,
           content: noteContent,
           is_encrypted: optionsState.encrypt ? 1 : 0, // 使用当前加密状态
@@ -156,13 +158,18 @@ export default function EditScreen() {
         showSuccess('笔记已更新');
       } else {
         // 创建新笔记
-        await createNote({
+        const response = await createNote({
           title: titleToUse,
           content: noteContent,
           is_encrypted: optionsState.encrypt ? 1 : 0, // 使用当前加密状态
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
+
+        // 保存成功后更新noteId，这样后续编辑就会更新这个笔记而不是创建新笔记
+        if (response.id) {
+          setNoteId(response.id);
+        }
         showSuccess('笔记已创建');
       }
     } catch (error) {
@@ -171,10 +178,19 @@ export default function EditScreen() {
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [
+    isSaving,
+    noteId,
+    noteContent,
+    noteTitle,
+    optionsState.encrypt,
+    showSuccess,
+    showError,
+    setNoteId,
+  ]);
 
   // 自动保存功能
-  const autoSave = () => {
+  const autoSave = useCallback(() => {
     // 清除之前的定时器
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
@@ -186,14 +202,18 @@ export default function EditScreen() {
         await saveNote();
       }, 1000),
     ); // 1秒后自动保存
-  };
+  }, [debounceTimer, saveNote]);
 
   // 当内容改变时触发自动保存
   useEffect(() => {
     // 防止初次加载时触发自动保存
     if (noteContent !== (content as string) || noteTitle !== (title as string)) {
-      if (noteContent || noteTitle) {
-        // 只有当内容或标题不为空时才触发自动保存
+      // 对于已有ID的笔记，总是触发自动保存；对于新笔记，只有当内容或标题不为空时才触发
+      if (noteId && noteId !== '' && noteId !== 'undefined') {
+        // 如果是已有笔记，总是自动保存
+        autoSave();
+      } else if (noteContent || noteTitle) {
+        // 对于新笔记，只有当内容或标题不为空时才触发自动保存
         autoSave();
       }
     }
@@ -204,7 +224,7 @@ export default function EditScreen() {
         clearTimeout(Number(debounceTimer.current));
       }
     };
-  }, [noteTitle, noteContent, title, content]);
+  }, [noteTitle, noteContent, title, content, noteId, autoSave]);
 
   // 预留函数调用接口
   const handleSaveNote = async () => {
@@ -212,24 +232,29 @@ export default function EditScreen() {
     setShowSaveModal(true);
   };
 
-  const handleDeleteNote = () => {
+  const handleDeleteNote = async () => {
     // 预留删除笔记的函数
     setShowDeleteModal(true);
   };
 
   const handleConfirmDelete = async () => {
     // 确认删除的逻辑
+    setIsDeleting(true);
     try {
-      if (id && id !== '' && id !== 'undefined') {
+      if (noteId && noteId !== '' && noteId !== 'undefined') {
         // 如果是编辑现有笔记，则删除它
-        await deleteNote(id as string);
+        await deleteNote(noteId as string);
         showSuccess('笔记已删除');
       }
       setShowDeleteModal(false);
+      // 直接返回主页，useFocusEffect 会在主页组件重新获得焦点时触发刷新
       router.back();
     } catch (error) {
       console.error('删除笔记失败:', error);
-      showError('删除笔记失败');
+      // 不再显示删除错误的弹窗，仅记录日志
+      // showError('删除笔记失败');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -364,6 +389,18 @@ export default function EditScreen() {
           </Animated.View>
         </TouchableOpacity>
       </Modal>
+
+      {/* 删除确认模态框 */}
+      <DeleteConfirmationModal
+        visible={showDeleteModal}
+        onClose={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+        title="删除笔记"
+        message="确定要删除此笔记吗？此操作无法撤销。"
+        confirmText="删除"
+        cancelText="取消"
+        isLoading={isDeleting}
+      />
     </View>
   );
 }

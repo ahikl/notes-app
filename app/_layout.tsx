@@ -10,6 +10,7 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { initLocalStorage } from '@/services';
+import AppInitializationService from '@/services/AppInitializationService';
 import { NotificationProvider } from '@/components/NotificationManager';
 
 if (typeof global.Buffer === 'undefined') {
@@ -26,7 +27,7 @@ export const unstable_settings = {
 };
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
@@ -34,9 +35,12 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
 
-  // 初始化本地存储
+  // 初始化本地存储和定时任务服务
   useEffect(() => {
     initLocalStorage().catch(console.error);
+
+    // 初始化定时任务服务
+    AppInitializationService.initialize().catch(console.error);
   }, []);
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
@@ -46,7 +50,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (loaded) {
-      SplashScreen.hideAsync();
+      void SplashScreen.hideAsync();
     }
   }, [loaded]);
 

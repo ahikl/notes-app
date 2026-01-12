@@ -1,6 +1,5 @@
 import { Note, SyncNotesRequest, SyncNotesResponse } from '@/types/notes/NoteTypes';
-import * as LocalNoteService from '../local/LocalNoteService';
-import { syncNotes } from './NoteService';
+import { syncNotes } from '@/services';
 import * as DatabaseService from '../database/DatabaseService';
 
 /**
@@ -13,9 +12,8 @@ import * as DatabaseService from '../database/DatabaseService';
  */
 export const synchronizeNotes = async (): Promise<SyncNotesResponse> => {
   try {
-    // 获取所有本地笔记
-    const localNotesResult = await LocalNoteService.exportAllNotes();
-    const localNotes = localNotesResult.data;
+    // 获取所有本地笔记（包括被软删除的）
+    const localNotes = await DatabaseService.getAllNotesIncludingDeleted();
 
     // 准备同步请求数据
     const syncRequest: SyncNotesRequest = {
