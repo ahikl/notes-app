@@ -1,6 +1,7 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
+    "plugins": [{ "name": "nativewind/typescript" }],
     "strict": true,
     "paths": {
       "@/*": ["./*"]
