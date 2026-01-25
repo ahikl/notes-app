@@ -40,16 +40,6 @@ export const HeaderStyles = StyleSheet.create({
     borderBottomWidth: 1,
     // 底部边框颜色为浅灰色
     borderBottomColor: '#F0F0F0',
-    // 阴影颜色为黑色
-    shadowColor: '#000',
-    // 阴影偏移量，水平为0，垂直为1
-    shadowOffset: { width: 0, height: 1 },
-    // 阴影透明度为0.05
-    shadowOpacity: 0.05,
-    // 阴影模糊半径为2
-    shadowRadius: 2,
-    // Android阴影高度为2
-    elevation: 2,
   },
 
   // 简化 header 容器样式

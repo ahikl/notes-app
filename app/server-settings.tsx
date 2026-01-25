@@ -1,3 +1,15 @@
+import { HeaderStyles } from '@/constants/HeaderStyles';
+import {
+  getApiKey,
+  getApiUrl,
+  getEncryptionKey,
+  isValidApiKey,
+  isValidApiUrl,
+  saveApiKey,
+  saveApiUrl,
+  saveEncryptionKey,
+} from '@/utils/auth/AuthUtils';
+import { generateEncryptionKey } from '@/utils/crypto/EncryptionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -13,20 +25,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
-import { HeaderStyles } from '@/constants/HeaderStyles';
-import { generateEncryptionKey } from '@/utils/crypto/EncryptionUtils';
-import {
-  getApiKey,
-  getApiUrl,
-  getEncryptionKey,
-  isValidApiKey,
-  isValidApiUrl,
-  saveApiKey,
-  saveApiUrl,
-  saveEncryptionKey,
-} from '@/utils/auth/AuthUtils';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ServerSettingsScreen() {
   const router = useRouter();
@@ -239,21 +239,23 @@ export default function ServerSettingsScreen() {
                   <Ionicons name="server" size={18} color="#666" />
                   <Text style={styles.inputLabel}>API URL</Text>
                 </View>
-                <TextInput
-                  style={styles.input}
-                  placeholder="https://api.example.com"
-                  value={apiUrl}
-                  onChangeText={setApiUrl}
-                  placeholderTextColor="#999"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="url"
-                />
-                {apiUrl ? (
-                  <TouchableOpacity style={styles.clearInputButton} onPress={() => setApiUrl('')}>
-                    <Ionicons name="close-circle" size={18} color="#999" />
-                  </TouchableOpacity>
-                ) : null}
+                <View style={styles.urlInputContainer}>
+                  <TextInput
+                    style={[styles.input, styles.urlInput]}
+                    placeholder="https://api.example.com"
+                    value={apiUrl}
+                    onChangeText={setApiUrl}
+                    placeholderTextColor="#999"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                  />
+                  {apiUrl ? (
+                    <TouchableOpacity style={styles.clearInputButton} onPress={() => setApiUrl('')}>
+                      <Ionicons name="close-circle" size={20} color="#999" />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               </Animated.View>
 
               {/* API Key 输入框 */}
@@ -458,18 +460,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 20,
-    ...Platform.select({
-      ios: {
-        boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-      },
-      android: {
-        // elevation already handles shadow on Android
-      },
-      default: {
-        boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.08)',
-      },
-    }),
-    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
   },
   infoCard: {
     flexDirection: 'row',
@@ -520,6 +512,12 @@ const styles = StyleSheet.create({
   passwordContainer: {
     position: 'relative',
   },
+  urlInputContainer: {
+    position: 'relative',
+  },
+  urlInput: {
+    paddingRight: 50,
+  },
   passwordInput: {
     paddingRight: 50,
   },
@@ -537,6 +535,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     justifyContent: 'center',
+    paddingHorizontal: 8,
   },
   helperTextContainer: {
     flexDirection: 'row',
@@ -577,18 +576,6 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     backgroundColor: '#4A90E2',
-    ...Platform.select({
-      ios: {
-        boxShadow: '0px 4px 8px rgba(74, 144, 226, 0.3)',
-      },
-      android: {
-        // elevation already handles shadow on Android
-      },
-      default: {
-        boxShadow: '0px 4px 8px rgba(74, 144, 226, 0.3)',
-      },
-    }),
-    elevation: 4,
   },
   saveButtonText: {
     fontSize: 16,
@@ -615,18 +602,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     overflow: 'hidden',
-    elevation: 10,
-    ...Platform.select({
-      ios: {
-        boxShadow: '0px 4px 6px rgba(0, 0, 0, 0.3)',
-      },
-      android: {
-        // elevation already handles shadow on Android
-      },
-      default: {
-        boxShadow: '0px 4px 6px rgba(0, 0, 0, 0.3)',
-      },
-    }),
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
   },
   modalHeader: {
     paddingHorizontal: 20,

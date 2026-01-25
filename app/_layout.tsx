@@ -8,13 +8,10 @@ import { useEffect } from 'react';
 import 'react-native-get-random-values';
 import 'react-native-reanimated';
 
-import { NotificationProvider } from '@/components/NotificationManager';
 import { useColorScheme } from '@/components/useColorScheme';
 import { initLocalStorage } from '@/services';
 import AppInitializationService from '@/services/AppInitializationService';
-
-// NativeWind 用于原子化 CSS 样式
-import '../global.css';
+import { NotificationProvider } from '@/components/NotificationManager';
 
 if (typeof global.Buffer === 'undefined') {
   global.Buffer = Buffer;
