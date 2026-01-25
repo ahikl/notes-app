@@ -1,12 +1,12 @@
+import LocalStorageDemo from '@/components/LocalStorageDemo';
+import { useNotification } from '@/components/NotificationManager';
+import { HeaderStyles } from '@/constants/HeaderStyles';
+import { synchronizeNotes } from '@/services';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { HeaderStyles } from '@/constants/HeaderStyles';
-import LocalStorageDemo from '@/components/LocalStorageDemo';
-import { synchronizeNotes } from '@/services';
-import { useNotification } from '@/components/NotificationManager';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -107,18 +107,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     borderRadius: 8,
     marginBottom: 10,
-    elevation: 1,
-    ...Platform.select({
-      ios: {
-        boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.1)',
-      },
-      android: {
-        // elevation already handles shadow on Android
-      },
-      default: {
-        boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.1)',
-      },
-    }),
+    borderWidth: 1,
+    borderColor: '#eeeeee',
   },
   optionText: {
     fontSize: 16,

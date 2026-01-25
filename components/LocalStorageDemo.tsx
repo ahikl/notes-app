@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useNotification } from '@/components/NotificationManager';
 import { batchDeleteNotes } from '@/services';
 import {
   createNote as createLocalNote,
@@ -9,7 +8,8 @@ import {
   updateNote as updateLocalNote,
 } from '@/services/local/LocalNoteService';
 import { CreateNoteRequest, Note } from '@/types/notes/NoteTypes';
-import { useNotification } from '@/components/NotificationManager';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface LocalStorageDemoProps {
   onBack: () => void;
@@ -252,7 +252,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     marginBottom: 16,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#eee',
   },
   statsText: {
     fontSize: 16,
@@ -292,7 +293,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 8,
     marginBottom: 8,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#eee',
   },
   noteTitle: {
     fontSize: 16,
