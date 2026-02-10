@@ -1,8 +1,9 @@
-import * as SQLite from 'expo-sqlite';
 import { CreateNoteRequest, Note, UpdateNoteRequest } from '@/types/notes/NoteTypes';
+import * as SQLite from 'expo-sqlite';
 
 const DATABASE_NAME = 'notes.db';
 const NOTES_TABLE = 'notes';
+const CURRENT_DB_VERSION = 2; // 数据库版本号，用于迁移管理
 
 // --- 状态管理 ---
 let db: SQLite.SQLiteDatabase | null = null;
@@ -10,6 +11,37 @@ let initializing = false;
 let isProcessing = false;
 let isInsideQueueFlow = false; // 重入锁：防止嵌套调用死锁
 const operationQueue: (() => Promise<any>)[] = [];
+
+/**
+ * 数据库迁移：添加 iv 和 auth_tag 字段
+ */
+const migrateDatabase = async (instance: SQLite.SQLiteDatabase): Promise<void> => {
+  try {
+    // 检查是否需要添加 iv 字段
+    const tableInfo = await instance.getAllAsync<{ name: string }>(
+      `PRAGMA table_info(${NOTES_TABLE})`,
+    );
+
+    const columns = tableInfo.map((col) => col.name);
+
+    // 添加 iv 字段（如果不存在）
+    if (!columns.includes('iv')) {
+      await instance.execAsync(`ALTER TABLE ${NOTES_TABLE} ADD COLUMN iv TEXT;`);
+      console.log('数据库迁移：添加 iv 字段');
+    }
+
+    // 添加 auth_tag 字段（如果不存在）
+    if (!columns.includes('auth_tag')) {
+      await instance.execAsync(`ALTER TABLE ${NOTES_TABLE} ADD COLUMN auth_tag TEXT;`);
+      console.log('数据库迁移：添加 auth_tag 字段');
+    }
+
+    console.log('数据库迁移完成');
+  } catch (error) {
+    console.error('数据库迁移失败:', error);
+    throw error;
+  }
+};
 
 /**
  * 1. 健壮的数据库实例获取函数
@@ -31,12 +63,14 @@ const getDb = async (): Promise<SQLite.SQLiteDatabase> => {
   initializing = true;
   try {
     const instance = await SQLite.openDatabaseAsync(DATABASE_NAME);
-    // 确保表结构存在
+    // 确保表结构存在（包含 iv 和 auth_tag 字段）
     await instance.execAsync(`
       CREATE TABLE IF NOT EXISTS ${NOTES_TABLE} (
         id TEXT PRIMARY KEY NOT NULL,
         title TEXT NOT NULL,
         content TEXT NOT NULL,
+        iv TEXT,                    -- 初始化向量（Base64编码）
+        auth_tag TEXT,              -- 认证标签（Base64编码，GCM模式使用）
         is_encrypted INTEGER DEFAULT 0,
         sync_status INTEGER DEFAULT 0,
         is_deleted INTEGER DEFAULT 0,
@@ -44,6 +78,10 @@ const getDb = async (): Promise<SQLite.SQLiteDatabase> => {
         updated_at TEXT NOT NULL
       );
     `);
+
+    // 执行数据库迁移（添加新字段到现有表）
+    await migrateDatabase(instance);
+
     db = instance;
     console.log('数据库连接成功');
     return db;
@@ -129,10 +167,12 @@ const internalUpdateSingleNote = async (
 
   const now = new Date().toISOString();
   await dbInstance.runAsync(
-    `UPDATE ${NOTES_TABLE} SET title = ?, content = ?, is_encrypted = ?, sync_status = 1, updated_at = ? WHERE id = ?`,
+    `UPDATE ${NOTES_TABLE} SET title = ?, content = ?, iv = ?, auth_tag = ?, is_encrypted = ?, sync_status = 1, updated_at = ? WHERE id = ?`,
     [
       data.title ?? current.title,
       data.content ?? current.content,
+      (data as any).iv ?? (current as any).iv ?? null,
+      (data as any).auth_tag ?? (current as any).auth_tag ?? null,
       data.is_encrypted ?? current.is_encrypted,
       data.updated_at || now,
       id,
@@ -188,10 +228,20 @@ export const batchOperationNotes = async (
         for (const note of createData) {
           const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
           createdIds.push(id);
+          const noteAny = note as any;
           await dbInstance.runAsync(
-            `INSERT INTO ${NOTES_TABLE} (id, title, content, is_encrypted, sync_status, is_deleted, created_at, updated_at) 
-             VALUES (?, ?, ?, ?, 1, 0, ?, ?)`,
-            [id, note.title, note.content, note.is_encrypted ?? 0, note.created_at || now, now],
+            `INSERT INTO ${NOTES_TABLE} (id, title, content, iv, auth_tag, is_encrypted, sync_status, is_deleted, created_at, updated_at) 
+             VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?)`,
+            [
+              id,
+              note.title,
+              note.content,
+              noteAny.iv ?? null,
+              noteAny.auth_tag ?? null,
+              note.is_encrypted ?? 0,
+              note.created_at || now,
+              now,
+            ],
           );
         }
       }
@@ -228,12 +278,21 @@ export const syncWithServer = async (serverNotes: Note[]) => {
           }
         } else if (!lNote) {
           // 本地没有，直接插入
+          const sNoteAny = sNote as any;
+          console.log(`[数据库] 从服务器插入新笔记 ${sNote.id}:`, {
+            is_encrypted: sNote.is_encrypted,
+            has_iv: !!sNoteAny.iv,
+            has_auth_tag: !!sNoteAny.auth_tag,
+            is_deleted: sNote.is_deleted,
+          });
           await dbInstance.runAsync(
-            `INSERT INTO ${NOTES_TABLE} (id, title, content, is_encrypted, sync_status, is_deleted, created_at, updated_at) VALUES (?, ?, ?, ?, 0, 0, ?, ?)`,
+            `INSERT INTO ${NOTES_TABLE} (id, title, content, iv, auth_tag, is_encrypted, sync_status, is_deleted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
             [
               sNote.id,
               sNote.title,
               sNote.content,
+              sNoteAny.iv ?? null,
+              sNoteAny.auth_tag ?? null,
               sNote.is_encrypted ?? 0,
               sNote.created_at,
               sNote.updated_at,
@@ -243,9 +302,24 @@ export const syncWithServer = async (serverNotes: Note[]) => {
         } else {
           // 本地有，比对时间戳
           if (new Date(sNote.updated_at).getTime() > new Date(lNote.updated_at).getTime()) {
+            const sNoteAny = sNote as any;
+            console.log(`[数据库] 从服务器更新笔记 ${sNote.id}:`, {
+              is_encrypted: sNote.is_encrypted,
+              has_iv: !!sNoteAny.iv,
+              has_auth_tag: !!sNoteAny.auth_tag,
+              is_deleted: sNote.is_deleted,
+            });
             await dbInstance.runAsync(
-              `UPDATE ${NOTES_TABLE} SET title=?, content=?, is_encrypted=?, sync_status=0, updated_at=? WHERE id=?`,
-              [sNote.title, sNote.content, sNote.is_encrypted ?? 0, sNote.updated_at, sNote.id],
+              `UPDATE ${NOTES_TABLE} SET title=?, content=?, iv=?, auth_tag=?, is_encrypted=?, sync_status=0, updated_at=? WHERE id=?`,
+              [
+                sNote.title,
+                sNote.content,
+                sNoteAny.iv ?? null,
+                sNoteAny.auth_tag ?? null,
+                sNote.is_encrypted ?? 0,
+                sNote.updated_at,
+                sNote.id,
+              ],
             );
             console.log('从服务器更新笔记:', sNote.id);
           } else {
@@ -272,9 +346,21 @@ export const createNote = (data: CreateNoteRequest) =>
   executeDbOperation(async (db) => {
     const id = Date.now().toString();
     const now = new Date().toISOString();
+    const dataAny = data as any;
     await db.runAsync(
-      `INSERT INTO ${NOTES_TABLE} (id, title, content, is_encrypted, sync_status, is_deleted, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)`,
-      [id, data.title, data.content, data.is_encrypted ?? 0, 1, 0, data.created_at || now, now],
+      `INSERT INTO ${NOTES_TABLE} (id, title, content, iv, auth_tag, is_encrypted, sync_status, is_deleted, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [
+        id,
+        data.title,
+        data.content,
+        dataAny.iv ?? null,
+        dataAny.auth_tag ?? null,
+        data.is_encrypted ?? 0,
+        1,
+        0,
+        data.created_at || now,
+        now,
+      ],
     );
     console.log('笔记创建成功:', id);
     return id;
@@ -368,11 +454,21 @@ export const batchCreateNotes = async (notesData: CreateNoteRequest[]): Promise<
       for (const note of notesData) {
         const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
         ids.push(id);
+        const noteAny = note as any;
 
         await db.runAsync(
-          `INSERT INTO ${NOTES_TABLE} (id, title, content, is_encrypted, sync_status, is_deleted, created_at, updated_at) 
-           VALUES (?, ?, ?, ?, 1, 0, ?, ?)`,
-          [id, note.title, note.content, note.is_encrypted ?? 0, note.created_at || now, now],
+          `INSERT INTO ${NOTES_TABLE} (id, title, content, iv, auth_tag, is_encrypted, sync_status, is_deleted, created_at, updated_at) 
+           VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?)`,
+          [
+            id,
+            note.title,
+            note.content,
+            noteAny.iv ?? null,
+            noteAny.auth_tag ?? null,
+            note.is_encrypted ?? 0,
+            note.created_at || now,
+            now,
+          ],
         );
       }
     });

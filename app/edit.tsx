@@ -1,3 +1,8 @@
+import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
+import { useNotification } from '@/components/NotificationManager';
+import { HeaderStyles } from '@/constants/HeaderStyles';
+import { createNote, deleteNote, getNoteById, updateNote } from '@/services/local/LocalNoteService';
+import { getDefaultEncryption } from '@/utils/auth/AuthUtils';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -12,10 +17,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { HeaderStyles } from '@/constants/HeaderStyles';
-import { createNote, deleteNote, getNoteById, updateNote } from '@/services/local/LocalNoteService';
-import { useNotification } from '@/components/NotificationManager';
-import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
 
 export default function EditScreen() {
   const { id, title, content } = useLocalSearchParams();
@@ -45,7 +46,7 @@ export default function EditScreen() {
     encrypt: false,
   });
 
-  // 在组件加载时获取现有笔记的加密状态
+  // 在组件加载时获取现有笔记的加密状态或应用默认加密设置
   useEffect(() => {
     const loadExistingNote = async () => {
       if (id && id !== 'undefined' && id !== '') {
@@ -62,12 +63,23 @@ export default function EditScreen() {
           console.error('加载现有笔记失败:', error);
         }
       } else {
-        // 对于新笔记，设置默认加密状态
-        setInitialEncryptStatus(false);
-        setOptionsState((prev) => ({
-          ...prev,
-          encrypt: false,
-        }));
+        // 对于新笔记，应用默认加密设置
+        try {
+          const defaultEncrypt = await getDefaultEncryption();
+          setInitialEncryptStatus(defaultEncrypt);
+          setOptionsState((prev) => ({
+            ...prev,
+            encrypt: defaultEncrypt,
+          }));
+        } catch (error) {
+          console.error('加载默认加密设置失败:', error);
+          // 如果加载失败，默认不加密
+          setInitialEncryptStatus(false);
+          setOptionsState((prev) => ({
+            ...prev,
+            encrypt: false,
+          }));
+        }
       }
     };
 
@@ -191,6 +203,20 @@ export default function EditScreen() {
 
   // 自动保存功能
   const autoSave = useCallback(() => {
+    // 如果正在保存，跳过
+    if (isSaving) {
+      return;
+    }
+
+    // 对于新笔记，内容和标题都为空时不自动保存
+    if (
+      (!noteId || noteId === '' || noteId === 'undefined') &&
+      !noteContent.trim() &&
+      !noteTitle.trim()
+    ) {
+      return;
+    }
+
     // 清除之前的定时器
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
@@ -202,12 +228,15 @@ export default function EditScreen() {
         await saveNote();
       }, 1000),
     ); // 1秒后自动保存
-  }, [debounceTimer, saveNote]);
+  }, [isSaving, noteId, noteContent, noteTitle, saveNote]);
 
-  // 当内容改变时触发自动保存
+  // 当内容或加密状态改变时触发自动保存
   useEffect(() => {
     // 防止初次加载时触发自动保存
-    if (noteContent !== (content as string) || noteTitle !== (title as string)) {
+    const isContentChanged = noteContent !== (content as string) || noteTitle !== (title as string);
+    const isEncryptChanged = optionsState.encrypt !== initialEncryptStatus;
+
+    if (isContentChanged || isEncryptChanged) {
       // 对于已有ID的笔记，总是触发自动保存；对于新笔记，只有当内容或标题不为空时才触发
       if (noteId && noteId !== '' && noteId !== 'undefined') {
         // 如果是已有笔记，总是自动保存
@@ -224,7 +253,16 @@ export default function EditScreen() {
         clearTimeout(Number(debounceTimer.current));
       }
     };
-  }, [noteTitle, noteContent, title, content, noteId, autoSave]);
+  }, [
+    noteTitle,
+    noteContent,
+    title,
+    content,
+    noteId,
+    autoSave,
+    optionsState.encrypt,
+    initialEncryptStatus,
+  ]);
 
   // 预留函数调用接口
   const handleSaveNote = async () => {

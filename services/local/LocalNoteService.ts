@@ -14,13 +14,17 @@ import {
   UpdateNoteRequest,
   UpdateNoteResponse,
 } from '@/types/notes/NoteTypes';
+import { processSyncUpdates } from '@/utils/sync/SyncDataUtils';
+import { TransparentCryptoService } from '../crypto/TransparentCryptoService';
 import * as DatabaseService from '../database/DatabaseService';
 
 // 初始化本地存储
 export const initLocalStorage = async () => {
   try {
     await DatabaseService.initDatabase();
-    console.log('本地数据库初始化完成');
+    // 初始化透明加密服务
+    await TransparentCryptoService.initialize();
+    console.log('本地数据库和加密服务初始化完成');
   } catch (error) {
     console.error('本地数据库初始化失败:', error);
     throw error;
@@ -29,20 +33,25 @@ export const initLocalStorage = async () => {
 
 /**
  * 获取笔记列表（带分页）
+ * 自动解密加密笔记
  */
 export const getNotes = async (query?: GetNotesQuery): Promise<PaginatedResponse<Note>> => {
   try {
     const allNotes = await DatabaseService.getAllNotes();
+
+    // 解密所有笔记
+    const decryptedNotes = await TransparentCryptoService.decryptNotes(allNotes);
+
     const page = query?.page || 1;
     const limit = query?.limit || 20;
     const startIndex = (page - 1) * limit;
     const endIndex = startIndex + limit;
 
     // 如果有搜索查询，先过滤
-    let notes = allNotes;
+    let notes = decryptedNotes;
     if (query?.search) {
       const searchTerm = query.search.toLowerCase();
-      notes = allNotes.filter(
+      notes = decryptedNotes.filter(
         (note) =>
           note.title.toLowerCase().includes(searchTerm) ||
           note.content.toLowerCase().includes(searchTerm),
@@ -53,7 +62,7 @@ export const getNotes = async (query?: GetNotesQuery): Promise<PaginatedResponse
 
     return {
       total: notes.length,
-      data: paginatedNotes,
+      data: paginatedNotes as Note[],
       page,
       limit,
     };
@@ -65,6 +74,7 @@ export const getNotes = async (query?: GetNotesQuery): Promise<PaginatedResponse
 
 /**
  * 根据ID获取笔记
+ * 自动解密加密笔记
  */
 export const getNoteById = async (id: string): Promise<Note> => {
   try {
@@ -72,7 +82,10 @@ export const getNoteById = async (id: string): Promise<Note> => {
     if (!note) {
       throw new Error(`笔记不存在: ${id}`);
     }
-    return note;
+
+    // 解密笔记内容
+    const decryptedNote = await TransparentCryptoService.decryptNote(note);
+    return decryptedNote as Note;
   } catch (error) {
     console.error('获取笔记失败:', error);
     throw error;
@@ -81,10 +94,42 @@ export const getNoteById = async (id: string): Promise<Note> => {
 
 /**
  * 创建笔记
+ * 如果启用加密，自动加密内容后存储
  */
 export const createNote = async (data: CreateNoteRequest): Promise<CreateNoteResponse> => {
   try {
-    const id = await DatabaseService.createNote(data);
+    const now = new Date().toISOString();
+    const plainNote = {
+      id: '', // 数据库会生成ID
+      title: data.title,
+      content: data.content,
+      is_encrypted: data.is_encrypted ?? 0,
+      sync_status: 1,
+      is_deleted: 0,
+      created_at: data.created_at || now,
+      updated_at: data.updated_at || now,
+    };
+
+    // 加密笔记（如果需要）
+    const encryptedNote = await TransparentCryptoService.prepareForStorage(plainNote);
+
+    console.log(`[本地服务] 创建笔记，加密状态: ${encryptedNote.is_encrypted}`, {
+      has_iv: !!encryptedNote.iv,
+      has_auth_tag: !!encryptedNote.auth_tag,
+    });
+
+    // 创建笔记请求（包含 iv 和 auth_tag）
+    const createData: CreateNoteRequest = {
+      title: encryptedNote.title,
+      content: encryptedNote.content,
+      is_encrypted: encryptedNote.is_encrypted,
+      created_at: encryptedNote.created_at,
+      updated_at: encryptedNote.updated_at,
+      ...(encryptedNote.iv && { iv: encryptedNote.iv }),
+      ...(encryptedNote.auth_tag && { auth_tag: encryptedNote.auth_tag }),
+    } as any; // 使用 any 类型避免 CreateNoteRequest 类型不包含 iv/auth_tag 的错误
+
+    const id = await DatabaseService.createNote(createData);
     return {
       success: true,
       id,
@@ -97,13 +142,50 @@ export const createNote = async (data: CreateNoteRequest): Promise<CreateNoteRes
 
 /**
  * 更新笔记
+ * 如果启用加密，自动加密内容后存储
  */
 export const updateNote = async (
   id: string,
   data: UpdateNoteRequest,
 ): Promise<UpdateNoteResponse> => {
   try {
-    await DatabaseService.updateNote(id, data);
+    // 获取当前笔记以获取完整信息
+    const currentNote = await DatabaseService.getNoteById(id);
+    if (!currentNote) {
+      throw new Error(`笔记不存在: ${id}`);
+    }
+
+    // 构建完整的明文笔记数据
+    const now = new Date().toISOString();
+    const plainNote = {
+      id,
+      title: data.title ?? currentNote.title,
+      content: data.content ?? currentNote.content,
+      is_encrypted: data.is_encrypted ?? currentNote.is_encrypted,
+      sync_status: 1,
+      is_deleted: currentNote.is_deleted,
+      created_at: currentNote.created_at,
+      updated_at: data.updated_at || now,
+    };
+
+    // 加密笔记（如果需要）
+    const encryptedNote = await TransparentCryptoService.prepareForStorage(plainNote);
+
+    console.log(`[本地服务] 更新笔记 ${id}，加密状态: ${encryptedNote.is_encrypted}`, {
+      has_iv: !!encryptedNote.iv,
+      has_auth_tag: !!encryptedNote.auth_tag,
+    });
+
+    // 更新笔记（包含 iv 和 auth_tag）
+    await DatabaseService.updateNote(id, {
+      title: encryptedNote.title,
+      content: encryptedNote.content,
+      is_encrypted: encryptedNote.is_encrypted,
+      updated_at: encryptedNote.updated_at,
+      ...(encryptedNote.iv !== undefined && { iv: encryptedNote.iv }),
+      ...(encryptedNote.auth_tag !== undefined && { auth_tag: encryptedNote.auth_tag }),
+    } as any); // 使用 any 类型避免 UpdateNoteRequest 类型不包含 iv/auth_tag 的错误
+
     return {
       success: true,
     };
@@ -377,15 +459,18 @@ export const batchSafelyDeleteNotes = async (
 
 /**
  * 导出所有笔记
+ * 自动解密加密笔记
  */
 export const exportAllNotes = async (): Promise<ExportAllNotesResponse> => {
   try {
     const notes = await DatabaseService.exportAllNotes();
+    // 解密所有笔记以便导出明文
+    const decryptedNotes = await TransparentCryptoService.decryptNotes(notes);
     return {
       success: true,
       timestamp: new Date().toISOString(),
-      count: notes.length,
-      data: notes,
+      count: decryptedNotes.length,
+      data: decryptedNotes as Note[],
     };
   } catch (error) {
     console.error('导出笔记失败:', error);
@@ -439,13 +524,15 @@ export const clearAllNotes = async (): Promise<DeleteNoteResponse> => {
 
 /**
  * 同步笔记
+ * 加密笔记以密文形式同步，保护传输安全
+ * 使用 Base64 编码进行数据传输
  */
 export const syncNotes = async (): Promise<SyncNotesResponse> => {
   try {
-    // 使用数据库服务的同步功能
+    // 使用数据库服务的同步功能（获取的是密文）
     const localNotes = await DatabaseService.getAllNotesIncludingDeleted();
 
-    // 准备同步请求数据
+    // 准备同步请求数据（直接传输密文，保护数据安全）
     const request: SyncNotesRequest = {
       clientNotes: localNotes,
     };
@@ -453,9 +540,10 @@ export const syncNotes = async (): Promise<SyncNotesResponse> => {
     // 发送到服务器进行同步
     const result = await NoteService.syncNotes(request);
 
-    // 处理服务器返回的数据
+    // 处理服务器返回的数据（服务器返回的也是密文，需要转换为数据库格式）
     if (result.updates && result.updates.length > 0) {
-      await DatabaseService.syncWithServer(result.updates);
+      const processedUpdates = processSyncUpdates(result.updates);
+      await DatabaseService.syncWithServer(processedUpdates);
     }
 
     return result;
