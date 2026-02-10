@@ -2,11 +2,13 @@ import { HeaderStyles } from '@/constants/HeaderStyles';
 import {
   getApiKey,
   getApiUrl,
+  getDefaultEncryption,
   getEncryptionKey,
   isValidApiKey,
   isValidApiUrl,
   saveApiKey,
   saveApiUrl,
+  saveDefaultEncryption,
   saveEncryptionKey,
 } from '@/utils/auth/AuthUtils';
 import { generateEncryptionKey } from '@/utils/crypto/EncryptionUtils';
@@ -36,6 +38,7 @@ export default function ServerSettingsScreen() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [defaultEncryption, setDefaultEncryption] = useState(true);
 
   // 组件加载时从存储中获取现有配置
   useEffect(() => {
@@ -55,6 +58,10 @@ export default function ServerSettingsScreen() {
         if (storedEncryptionKey) {
           setPassword(storedEncryptionKey);
         }
+
+        // 加载默认加密设置
+        const storedDefaultEncryption = await getDefaultEncryption();
+        setDefaultEncryption(storedDefaultEncryption);
       } catch (error) {
         console.error('加载设置时出错:', error);
         // 如果加载失败，可以给用户一些提示或者继续运行应用
@@ -165,6 +172,7 @@ export default function ServerSettingsScreen() {
       await saveApiUrl(apiUrl);
       await saveApiKey(apiKey);
       await saveEncryptionKey(password); // 保存加密密钥
+      await saveDefaultEncryption(defaultEncryption); // 保存默认加密设置
 
       // 实际保存成功，直接跳转回上一页
       setIsSaving(false);
@@ -316,6 +324,33 @@ export default function ServerSettingsScreen() {
                     <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="#666" />
                   </TouchableOpacity>
                 </View>
+              </Animated.View>
+
+              {/* 默认加密设置 */}
+              <Animated.View
+                entering={FadeInUp.delay(450).duration(500)}
+                style={styles.inputContainer}
+              >
+                <View style={styles.inputHeader}>
+                  <Ionicons name="shield-checkmark" size={18} color="#666" />
+                  <Text style={styles.inputLabel}>默认启用加密</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.checkboxContainer}
+                  onPress={() => setDefaultEncryption(!defaultEncryption)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.checkbox}>
+                    <Ionicons
+                      name={defaultEncryption ? 'checkbox' : 'square-outline'}
+                      size={24}
+                      color={defaultEncryption ? '#4A90E2' : '#999'}
+                    />
+                  </View>
+                  <Text style={styles.checkboxText}>
+                    {defaultEncryption ? '新笔记将自动启用加密' : '新笔记默认不加密，需手动开启'}
+                  </Text>
+                </TouchableOpacity>
               </Animated.View>
             </View>
           </Animated.View>
@@ -652,5 +687,19 @@ const styles = StyleSheet.create({
   buttonSeparator: {
     width: 1,
     backgroundColor: '#f0f0f0',
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  checkbox: {
+    marginRight: 12,
+  },
+  checkboxText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
   },
 });

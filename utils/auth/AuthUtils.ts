@@ -62,3 +62,25 @@ export const getEncryptionKey = async (): Promise<string | null> =>
   SecureStore.getItemAsync(ENCRYPTION_KEY_STORAGE_KEY);
 
 // 删除存储的加密密钥
+export const removeEncryptionKey = async (): Promise<void> =>
+  SecureStore.deleteItemAsync(ENCRYPTION_KEY_STORAGE_KEY);
+
+// 默认加密设置存储键名
+const DEFAULT_ENCRYPTION_KEY = 'notes_default_encryption_enabled';
+
+/**
+ * 保存默认加密设置
+ * @param enabled 是否启用默认加密
+ */
+export const saveDefaultEncryption = async (enabled: boolean): Promise<void> =>
+  AsyncStorage.setItem(DEFAULT_ENCRYPTION_KEY, enabled ? 'true' : 'false');
+
+/**
+ * 获取默认加密设置
+ * @returns 是否启用默认加密，默认为 true
+ */
+export const getDefaultEncryption = async (): Promise<boolean> => {
+  const value = await AsyncStorage.getItem(DEFAULT_ENCRYPTION_KEY);
+  // 默认为 true（启用默认加密）
+  return value !== 'false';
+};

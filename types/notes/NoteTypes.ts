@@ -3,6 +3,37 @@ export interface Note {
   id: string;
   title: string;
   content: string;
+  iv?: string; // 初始化向量（Base64编码，加密笔记使用）
+  auth_tag?: string; // 认证标签（Base64编码，GCM模式使用）
+  is_encrypted: number;
+  sync_status: number;
+  is_deleted: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// 同步专用的笔记类型（用于API传输）
+// 包含所有加密相关的Base64编码字段
+export interface SyncNote {
+  id: string;
+  title: string;
+  content: string; // Base64编码的加密内容
+  iv?: string; // Base64编码的初始化向量
+  auth_tag?: string; // Base64编码的认证标签
+  is_encrypted: number;
+  is_deleted?: number; // 删除状态，用于同步删除操作
+  created_at: string;
+  updated_at: string;
+}
+
+// 本地数据库存储的笔记类型
+// 加密内容以二进制格式存储
+export interface DatabaseNote {
+  id: string;
+  title: string;
+  content: string; // 明文或密文（Base64格式）
+  iv?: string; // Base64格式或二进制
+  auth_tag?: string; // Base64格式或二进制
   is_encrypted: number;
   sync_status: number;
   is_deleted: number;
@@ -84,8 +115,8 @@ export interface CreateNoteRequest {
 export interface UpdateNoteRequest {
   title?: string;
   content?: string;
-  is_encrypted: number;
-  updated_at: string;
+  is_encrypted?: number;
+  updated_at?: string;
 }
 
 // 获取笔记列表的查询参数类型
@@ -97,12 +128,12 @@ export interface GetNotesQuery {
 
 // 同步笔记请求参数类型
 export interface SyncNotesRequest {
-  clientNotes: Note[];
+  clientNotes: SyncNote[]; // 使用SyncNote进行API传输
 }
 
 // 同步笔记响应类型
 export interface SyncNotesResponse {
   success: boolean;
-  updates: Note[];
+  updates: SyncNote[]; // 使用SyncNote进行API传输
   syncedIds: string[];
 }
