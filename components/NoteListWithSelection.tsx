@@ -1,4 +1,9 @@
+import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
+import { useNotification } from '@/components/NotificationManager';
+import { batchDeleteNotes, getNotes } from '@/services/local/LocalNoteService';
+import { Note } from '@/types/notes/NoteTypes';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
@@ -10,11 +15,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { Note } from '@/types/notes/NoteTypes';
-import { batchDeleteNotes, getNotes } from '@/services/local/LocalNoteService';
-import { useNotification } from '@/components/NotificationManager';
-import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
 
 const { width } = Dimensions.get('window');
 const cardMargin = 10;
@@ -44,7 +44,6 @@ const NoteListWithSelection: React.FC<NoteListWithSelectionProps> = ({
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
-  const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
 
   // 加载笔记
   const loadNotes = useCallback(async () => {
@@ -107,37 +106,36 @@ const NoteListWithSelection: React.FC<NoteListWithSelectionProps> = ({
     setShowBatchDeleteModal(true);
   };
 
-  // 执行批量删除
-  const handleBatchDelete = async () => {
-    setBatchDeleteLoading(true);
-    try {
-      const selectedIds = getSelectedIds();
-      if (selectedIds.length === 0) {
-        showError('请先选择要删除的笔记');
-        return;
-      }
-
-      await batchDeleteNotes(selectedIds);
-      showSuccess(`成功删除 ${selectedIds.length} 条笔记`);
-
-      // 退出选择模式并刷新列表
-      setSelectedNotes({});
-      setIsSelectionMode(false);
-      setShowBatchDeleteModal(false);
-
-      // 如果提供了刷新回调，调用它
-      if (onRefresh) {
-        onRefresh();
-      } else {
-        await loadNotes();
-      }
-    } catch (error) {
-      console.error('批量删除失败:', error);
-      // 不显示批量删除错误的弹窗，仅记录日志
-      // showError('批量删除失败');
-    } finally {
-      setBatchDeleteLoading(false);
+  // 执行批量删除 - 异步处理，立即关闭弹窗
+  const handleBatchDelete = () => {
+    const selectedIds = getSelectedIds();
+    if (selectedIds.length === 0) {
+      showError('请先选择要删除的笔记');
+      return;
     }
+
+    // 立即关闭弹窗并退出选择模式，提升用户体验
+    setShowBatchDeleteModal(false);
+    setSelectedNotes({});
+    setIsSelectionMode(false);
+
+    // 立即刷新本地列表（从UI中移除已删除的笔记）
+    if (onRefresh) {
+      onRefresh();
+    } else {
+      void loadNotes();
+    }
+
+    // 在后台异步执行批量删除操作
+    batchDeleteNotes(selectedIds)
+      .then(() => {
+        console.log(`批量删除成功: ${selectedIds.length} 条笔记`);
+      })
+      .catch((error) => {
+        console.error('批量删除失败:', error);
+        // 异步删除失败不显示错误弹窗，仅记录日志
+        // 删除状态已保存在本地，下次同步时会重试
+      });
   };
 
   // 计算已选择的数量
@@ -264,7 +262,6 @@ const NoteListWithSelection: React.FC<NoteListWithSelectionProps> = ({
         message={`确定要删除这 ${selectedCount} 条笔记吗？此操作无法撤销。`}
         confirmText="删除"
         cancelText="取消"
-        isLoading={batchDeleteLoading}
       />
     </View>
   );

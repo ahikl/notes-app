@@ -17,7 +17,11 @@ export default function SettingsScreen() {
     try {
       showInfo('正在同步笔记，请稍候...');
       const result = await synchronizeNotes();
-      showSuccess(`同步成功！更新了 ${result.updates.length} 条笔记。`);
+      const totalChanges =
+        (result.toUpdate?.length || 0) +
+        (result.toDelete?.length || 0) +
+        (result.toRestore?.length || 0);
+      showSuccess(`同步成功！更新了 ${totalChanges} 条笔记。`);
     } catch (error) {
       console.error('同步失败:', error);
       showError('笔记同步失败，请检查网络连接和API设置。');

@@ -132,7 +132,6 @@ export default function EditScreen() {
   // 状态管理弹窗
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   // 添加一个状态来跟踪是否正在保存，防止重复保存
   const [isSaving, setIsSaving] = useState(false);
@@ -275,25 +274,25 @@ export default function EditScreen() {
     setShowDeleteModal(true);
   };
 
-  const handleConfirmDelete = async () => {
-    // 确认删除的逻辑
-    setIsDeleting(true);
-    try {
-      if (noteId && noteId !== '' && noteId !== 'undefined') {
-        // 如果是编辑现有笔记，则删除它
-        await deleteNote(noteId as string);
-        showSuccess('笔记已删除');
-      }
-      setShowDeleteModal(false);
-      // 直接返回主页，useFocusEffect 会在主页组件重新获得焦点时触发刷新
-      router.back();
-    } catch (error) {
-      console.error('删除笔记失败:', error);
-      // 不再显示删除错误的弹窗，仅记录日志
-      // showError('删除笔记失败');
-    } finally {
-      setIsDeleting(false);
+  const handleConfirmDelete = () => {
+    // 异步删除：立即关闭弹窗并返回，后台执行删除操作
+    setShowDeleteModal(false);
+
+    if (noteId && noteId !== '' && noteId !== 'undefined') {
+      // 在后台异步执行删除操作，不阻塞UI
+      deleteNote(noteId as string)
+        .then(() => {
+          console.log('笔记删除成功:', noteId);
+        })
+        .catch((error) => {
+          console.error('删除笔记失败:', error);
+          // 异步删除失败不显示错误弹窗，仅记录日志
+          // 删除状态已保存在本地，下次同步时会重试
+        });
     }
+
+    // 立即返回主页，useFocusEffect 会在主页组件重新获得焦点时触发刷新
+    router.back();
   };
 
   const handleCancelDelete = () => {
@@ -437,7 +436,6 @@ export default function EditScreen() {
         message="确定要删除此笔记吗？此操作无法撤销。"
         confirmText="删除"
         cancelText="取消"
-        isLoading={isDeleting}
       />
     </View>
   );

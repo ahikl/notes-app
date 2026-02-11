@@ -1,10 +1,10 @@
+import NoteListWithSelection from '@/components/NoteListWithSelection';
+import { useNotification } from '@/components/NotificationManager';
+import { synchronizeNotes } from '@/services';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Platform, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
-import { synchronizeNotes } from '@/services';
-import { useNotification } from '@/components/NotificationManager';
-import NoteListWithSelection from '@/components/NoteListWithSelection';
 
 export default function IndexScreen() {
   const router = useRouter();
@@ -14,9 +14,12 @@ export default function IndexScreen() {
 
   const handleSync = async () => {
     try {
-      showInfo('正在同步笔记，请稍候...');
       const result = await synchronizeNotes();
-      showSuccess(`同步成功！更新了 ${result.updates.length} 条笔记。`);
+      const totalChanges =
+        (result.toUpdate?.length || 0) +
+        (result.toDelete?.length || 0) +
+        (result.toRestore?.length || 0);
+      showSuccess(`同步成功！更新了 ${totalChanges} 条笔记。`);
     } catch (error) {
       console.error('同步失败:', error);
       showError('笔记同步失败，请检查网络连接和API设置。');

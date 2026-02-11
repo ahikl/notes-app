@@ -9,12 +9,10 @@ import {
   GetNotesQuery,
   Note,
   PaginatedResponse,
-  SyncNotesRequest,
   SyncNotesResponse,
   UpdateNoteRequest,
   UpdateNoteResponse,
 } from '@/types/notes/NoteTypes';
-import { processSyncUpdates } from '@/utils/sync/SyncDataUtils';
 import { TransparentCryptoService } from '../crypto/TransparentCryptoService';
 import * as DatabaseService from '../database/DatabaseService';
 
@@ -523,34 +521,15 @@ export const clearAllNotes = async (): Promise<DeleteNoteResponse> => {
 };
 
 /**
- * 同步笔记
- * 加密笔记以密文形式同步，保护传输安全
- * 使用 Base64 编码进行数据传输
+ * 同步笔记（已废弃，请使用 SyncService.synchronizeNotes）
+ * 新API规范下，同步逻辑已改为服务端主导模式
+ * @deprecated 请使用 SyncService.synchronizeNotes 替代
  */
 export const syncNotes = async (): Promise<SyncNotesResponse> => {
-  try {
-    // 使用数据库服务的同步功能（获取的是密文）
-    const localNotes = await DatabaseService.getAllNotesIncludingDeleted();
-
-    // 准备同步请求数据（直接传输密文，保护数据安全）
-    const request: SyncNotesRequest = {
-      clientNotes: localNotes,
-    };
-
-    // 发送到服务器进行同步
-    const result = await NoteService.syncNotes(request);
-
-    // 处理服务器返回的数据（服务器返回的也是密文，需要转换为数据库格式）
-    if (result.updates && result.updates.length > 0) {
-      const processedUpdates = processSyncUpdates(result.updates);
-      await DatabaseService.syncWithServer(processedUpdates);
-    }
-
-    return result;
-  } catch (error) {
-    console.error('同步笔记失败:', error);
-    throw error;
-  }
+  console.warn('[LocalNoteService] syncNotes 已废弃，请使用 SyncService.synchronizeNotes');
+  // 导入并调用新的同步方法
+  const { synchronizeNotes } = await import('../notes/SyncService');
+  return synchronizeNotes();
 };
 
 /**

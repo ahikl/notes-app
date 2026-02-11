@@ -1,10 +1,10 @@
-import { synchronizeNotes } from '@/services';
-import * as DatabaseService from '../database/DatabaseService';
 import { Note } from '@/types/notes/NoteTypes';
+import * as DatabaseService from '../database/DatabaseService';
 import {
   batchDeleteNotes as batchDeleteNotesApi,
   deleteNote as deleteNoteApi,
 } from '../notes/NoteService';
+import { synchronizeNotes } from '../notes/SyncService';
 
 /**
  * 定时任务服务
@@ -69,31 +69,38 @@ class SchedulerService {
 
   /**
    * 执行同步任务
+   * 使用统一的双向同步机制，确保删除状态和数据一致性
    */
   private async performSync() {
     try {
-      console.log('开始执行同步任务...');
+      console.log('开始执行定时同步任务...');
 
-      // 获取所有笔记（包括被软删除的）
-      const allNotes = await DatabaseService.getAllNotesIncludingDeleted();
+      // 使用统一的同步服务进行双向同步
+      // 这会处理：
+      // 1. 本地删除状态同步到服务端
+      // 2. 服务端删除状态同步到本地
+      // 3. 服务端新笔记拉取到本地
+      // 4. 本地更新同步到服务端
+      await synchronizeNotes();
 
-      // 分离被删除和未删除的笔记
-      const deletedNotes = allNotes.filter((note) => note.is_deleted === 1);
-      const otherNotes = allNotes.filter((note) => note.is_deleted === 0);
-
-      // 同步删除标记的笔记到服务端
-      if (deletedNotes.length > 0) {
-        await this.syncDeletedNotes(deletedNotes);
-      }
-
-      // 使用现有的同步机制同步其他笔记
-      if (otherNotes.length > 0) {
-        await this.uploadNonDeletedNotes(otherNotes);
-      }
-
-      console.log('同步任务完成');
+      console.log('定时同步任务完成');
     } catch (error) {
-      console.error('同步任务执行失败:', error);
+      console.error('定时同步任务执行失败:', error);
+
+      // 如果统一同步失败，尝试单独同步删除标记的笔记
+      try {
+        console.log('尝试单独同步删除标记的笔记...');
+        const allNotes = await DatabaseService.getAllNotesIncludingDeleted();
+        const deletedNotes = allNotes.filter(
+          (note) => note.is_deleted === 1 && note.sync_status === 1,
+        );
+
+        if (deletedNotes.length > 0) {
+          await this.syncDeletedNotes(deletedNotes);
+        }
+      } catch (fallbackError) {
+        console.error('单独同步删除笔记也失败了:', fallbackError);
+      }
     }
   }
 
