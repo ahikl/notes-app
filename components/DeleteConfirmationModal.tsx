@@ -4,7 +4,7 @@ import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View } fr
 interface DeleteConfirmationModalProps {
   visible: boolean;
   onClose: () => void;
-  onConfirm: () => Promise<void>;
+  onConfirm: () => void | Promise<void>;
   title?: string;
   message?: string;
   confirmText?: string;

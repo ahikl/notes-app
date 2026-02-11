@@ -23,7 +23,6 @@ jest.mock('react-native-quick-crypto', () => ({
     const currentIv = Buffer.from(iv).toString('base64');
     return {
       update: jest.fn((data, inputEncoding, outputEncoding) => {
-        // 简单的模拟加密：base64 编码
         return Buffer.from(data).toString('base64');
       }),
       final: jest.fn((outputEncoding) => ''),
@@ -31,7 +30,6 @@ jest.mock('react-native-quick-crypto', () => ({
   }),
   createDecipheriv: jest.fn((algorithm, key, iv) => ({
     update: jest.fn((data, inputEncoding, outputEncoding) => {
-      // 简单的模拟解密：base64 解码
       return Buffer.from(data, 'base64').toString();
     }),
     final: jest.fn((outputEncoding) => ''),
@@ -44,10 +42,8 @@ jest.mock('react-native-quick-crypto', () => ({
   })),
 }));
 
-// 模拟 react-native-get-random-values
 jest.mock('react-native-get-random-values', () => ({}));
 
-// 模拟 expo-secure-store
 jest.mock('expo-secure-store', () => ({
   getItemAsync: jest.fn(),
   setItemAsync: jest.fn(),
@@ -55,5 +51,4 @@ jest.mock('expo-secure-store', () => ({
   isAvailableAsync: jest.fn(() => Promise.resolve(true)),
 }));
 
-// 全局测试超时设置
 jest.setTimeout(10000);

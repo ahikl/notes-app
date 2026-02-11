@@ -1,22 +1,31 @@
+import NoteListWithSelection from '@/components/NoteListWithSelection';
+import { useNotification } from '@/components/NotificationManager';
+import { synchronizeNotes } from '@/services';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Platform, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
-import { synchronizeNotes } from '@/services';
-import { useNotification } from '@/components/NotificationManager';
-import NoteListWithSelection from '@/components/NoteListWithSelection';
 
 export default function IndexScreen() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const noteListRef = useRef<{ refresh: () => void }>(null);
 
   const { showInfo, showSuccess, showError } = useNotification();
 
   const handleSync = async () => {
     try {
-      showInfo('正在同步笔记，请稍候...');
       const result = await synchronizeNotes();
-      showSuccess(`同步成功！更新了 ${result.updates.length} 条笔记。`);
+      const totalChanges =
+        (result.toUpdate?.length || 0) +
+        (result.toDelete?.length || 0) +
+        (result.toRestore?.length || 0);
+      showSuccess(`同步成功！更新了 ${totalChanges} 条笔记。`);
+
+      // 同步完成后立即刷新笔记列表
+      if (noteListRef.current) {
+        noteListRef.current.refresh();
+      }
     } catch (error) {
       console.error('同步失败:', error);
       showError('笔记同步失败，请检查网络连接和API设置。');
@@ -42,6 +51,7 @@ export default function IndexScreen() {
       <View style={styles.contentWrapper}>
         {/* 笔记列表组件 */}
         <NoteListWithSelection
+          ref={noteListRef}
           searchQuery={searchQuery}
           onRefresh={undefined} // 刷新功能由 useFocusEffect 实现
         />
@@ -74,10 +84,10 @@ const styles = StyleSheet.create({
   searchContainerFixed: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5', // 稍微调深一点背景色增加对比度
+    backgroundColor: '#F5F5F5',
     height: 45,
     marginHorizontal: 20,
-    marginTop: 15, // 适配全面屏顶部
+    marginTop: 15,
     marginBottom: 10,
     borderRadius: 25,
     paddingHorizontal: 15,
@@ -90,7 +100,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#333',
-    paddingVertical: 0, // 修复安卓文字垂直居中
+    paddingVertical: 0,
   },
   syncButton: {
     marginLeft: 10,
@@ -99,7 +109,7 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 30, // 稍微抬高一点
+    bottom: 30,
     width: 56,
     height: 56,
     borderRadius: 28,

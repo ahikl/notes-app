@@ -108,7 +108,7 @@ export class YjsNoteService {
    * @param noteId 笔记 ID
    * @returns 笔记数据
    */
-  static extractNoteFromDocument(doc: Y.Doc, noteId: string): Note {
+  static extractNoteFromDocument(doc: Y.Doc, noteId: string, originalNote?: Note): Note {
     const yTitle = doc.getText('title');
     const yContent = doc.getText('content');
     const yIsEncrypted = doc.getMap<boolean>('isEncrypted');
@@ -122,8 +122,8 @@ export class YjsNoteService {
       content: yContent.toString(),
       is_encrypted: yIsEncrypted.get('value') ? 1 : 0,
       sync_status: 1,
-      is_deleted: 0,
-      created_at: new Date().toISOString(),
+      is_deleted: originalNote?.is_deleted ?? 0,
+      created_at: originalNote?.created_at ?? new Date().toISOString(),
       updated_at: new Date(updatedAtTimestamp).toISOString(),
     };
   }
@@ -229,6 +229,14 @@ export class YjsNoteService {
       // 应用服务器更新到本地文档（自动合并）
       Y.applyUpdate(doc, serverUpdate);
 
+      // 确定合并后的删除状态：如果任一方已删除，则保持删除状态
+      const mergedIsDeleted = localNote.is_deleted === 1 || serverNote.is_deleted === 1 ? 1 : 0;
+
+      // 确定合并后的时间戳：使用较新的时间戳
+      const localTime = new Date(localNote.updated_at).getTime();
+      const serverTime = new Date(serverNote.updated_at).getTime();
+      const mergedUpdatedAt = localTime > serverTime ? localNote.updated_at : serverNote.updated_at;
+
       // 提取合并后的结果
       const mergedNote: Note = {
         id: noteId,
@@ -236,9 +244,9 @@ export class YjsNoteService {
         content: yContent.toString(),
         is_encrypted: (yIsEncrypted.get('value') ? 1 : 0) as 0 | 1,
         sync_status: 0,
-        is_deleted: 0,
+        is_deleted: mergedIsDeleted,
         created_at: localNote.created_at,
-        updated_at: new Date().toISOString(),
+        updated_at: mergedUpdatedAt,
       };
 
       // 清理文档

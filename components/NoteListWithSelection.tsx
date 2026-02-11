@@ -1,6 +1,11 @@
+import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
+import { useNotification } from '@/components/NotificationManager';
+import { batchDeleteNotes, getNotes } from '@/services/local/LocalNoteService';
+import { Note } from '@/types/notes/NoteTypes';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { forwardRef, useCallback, useImperativeHandle, useState } from 'react';
 import {
   Dimensions,
   Platform,
@@ -10,11 +15,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { Note } from '@/types/notes/NoteTypes';
-import { batchDeleteNotes, getNotes } from '@/services/local/LocalNoteService';
-import { useNotification } from '@/components/NotificationManager';
-import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
 
 const { width } = Dimensions.get('window');
 const cardMargin = 10;
@@ -25,6 +25,10 @@ interface NoteListWithSelectionProps {
   onRefresh?: () => void;
 }
 
+export interface NoteListWithSelectionRef {
+  refresh: () => void;
+}
+
 const truncateText = (text: string, maxLength: number) => {
   if (text.length <= maxLength) {
     return text;
@@ -32,243 +36,246 @@ const truncateText = (text: string, maxLength: number) => {
   return text.substring(0, maxLength) + '...';
 };
 
-const NoteListWithSelection: React.FC<NoteListWithSelectionProps> = ({
-  searchQuery = '',
-  onRefresh,
-}) => {
-  const router = useRouter();
-  const { showSuccess, showError } = useNotification();
+const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithSelectionProps>(
+  ({ searchQuery = '', onRefresh }, ref) => {
+    const router = useRouter();
+    const { showSuccess, showError } = useNotification();
 
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [selectedNotes, setSelectedNotes] = useState<Record<string, boolean>>({});
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
-  const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
+    const [notes, setNotes] = useState<Note[]>([]);
+    const [selectedNotes, setSelectedNotes] = useState<Record<string, boolean>>({});
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
 
-  // 加载笔记
-  const loadNotes = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const result = await getNotes({
-        search: searchQuery,
-        page: 1,
-        limit: 50, // 增加限制以支持批量操作
-      });
-      setNotes(result.data);
-    } catch (error) {
-      console.error('加载笔记失败:', error);
-      showError('加载笔记失败');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [searchQuery, setIsLoading, setNotes, showError]);
+    // 加载笔记
+    const loadNotes = useCallback(async () => {
+      try {
+        setIsLoading(true);
+        const result = await getNotes({
+          search: searchQuery,
+          page: 1,
+          limit: 50, // 增加限制以支持批量操作
+        });
+        setNotes(result.data);
+      } catch (error) {
+        console.error('加载笔记失败:', error);
+        showError('加载笔记失败');
+      } finally {
+        setIsLoading(false);
+      }
+    }, [searchQuery, setIsLoading, setNotes, showError]);
 
-  // 切换选择模式
-  const toggleSelectionMode = () => {
-    if (isSelectionMode) {
-      setSelectedNotes({});
-    }
-    setIsSelectionMode(!isSelectionMode);
-  };
+    // 切换选择模式
+    const toggleSelectionMode = () => {
+      if (isSelectionMode) {
+        setSelectedNotes({});
+      }
+      setIsSelectionMode(!isSelectionMode);
+    };
 
-  // 选择/取消选择笔记
-  const toggleNoteSelection = (id: string) => {
-    setSelectedNotes((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }));
-  };
+    // 选择/取消选择笔记
+    const toggleNoteSelection = (id: string) => {
+      setSelectedNotes((prev) => ({
+        ...prev,
+        [id]: !prev[id],
+      }));
+    };
 
-  // 全选/取消全选
-  const toggleSelectAll = () => {
-    if (Object.keys(selectedNotes).length === notes.length) {
-      // 全部已选中，取消选择
-      setSelectedNotes({});
-    } else {
-      // 部分或未选中，全选
-      const newSelected: Record<string, boolean> = {};
-      notes.forEach((note) => {
-        newSelected[note.id] = true;
-      });
-      setSelectedNotes(newSelected);
-    }
-  };
+    // 全选/取消全选
+    const toggleSelectAll = () => {
+      if (Object.keys(selectedNotes).length === notes.length) {
+        // 全部已选中，取消选择
+        setSelectedNotes({});
+      } else {
+        // 部分或未选中，全选
+        const newSelected: Record<string, boolean> = {};
+        notes.forEach((note) => {
+          newSelected[note.id] = true;
+        });
+        setSelectedNotes(newSelected);
+      }
+    };
 
-  // 获取已选中的笔记ID数组
-  const getSelectedIds = () => {
-    return Object.entries(selectedNotes)
-      .filter(([_, isSelected]) => isSelected)
-      .map(([id, _]) => id);
-  };
+    // 获取已选中的笔记ID数组
+    const getSelectedIds = () => {
+      return Object.entries(selectedNotes)
+        .filter(([_, isSelected]) => isSelected)
+        .map(([id, _]) => id);
+    };
 
-  // 批量删除确认
-  const confirmBatchDelete = () => {
-    setShowBatchDeleteModal(true);
-  };
+    // 批量删除确认
+    const confirmBatchDelete = () => {
+      setShowBatchDeleteModal(true);
+    };
 
-  // 执行批量删除
-  const handleBatchDelete = async () => {
-    setBatchDeleteLoading(true);
-    try {
+    // 执行批量删除 - 异步处理，立即关闭弹窗
+    const handleBatchDelete = () => {
       const selectedIds = getSelectedIds();
       if (selectedIds.length === 0) {
         showError('请先选择要删除的笔记');
         return;
       }
 
-      await batchDeleteNotes(selectedIds);
-      showSuccess(`成功删除 ${selectedIds.length} 条笔记`);
-
-      // 退出选择模式并刷新列表
+      // 立即关闭弹窗并退出选择模式，提升用户体验
+      setShowBatchDeleteModal(false);
       setSelectedNotes({});
       setIsSelectionMode(false);
-      setShowBatchDeleteModal(false);
 
-      // 如果提供了刷新回调，调用它
+      // 立即刷新本地列表（从UI中移除已删除的笔记）
       if (onRefresh) {
         onRefresh();
       } else {
-        await loadNotes();
+        void loadNotes();
       }
-    } catch (error) {
-      console.error('批量删除失败:', error);
-      // 不显示批量删除错误的弹窗，仅记录日志
-      // showError('批量删除失败');
-    } finally {
-      setBatchDeleteLoading(false);
-    }
-  };
 
-  // 计算已选择的数量
-  const selectedCount = Object.values(selectedNotes).filter(Boolean).length;
+      // 在后台异步执行批量删除操作
+      batchDeleteNotes(selectedIds)
+        .then(() => {
+          console.log(`批量删除成功: ${selectedIds.length} 条笔记`);
+        })
+        .catch((error) => {
+          console.error('批量删除失败:', error);
+          // 异步删除失败不显示错误弹窗，仅记录日志
+          // 删除状态已保存在本地，下次同步时会重试
+        });
+    };
 
-  // 初始加载及获得焦点时加载
-  useFocusEffect(
-    React.useCallback(() => {
-      const fetchData = async () => {
-        await loadNotes();
-      };
+    // 计算已选择的数量
+    const selectedCount = Object.values(selectedNotes).filter(Boolean).length;
 
-      void fetchData();
+    // 暴露刷新方法给父组件
+    useImperativeHandle(ref, () => ({
+      refresh: loadNotes,
+    }));
 
-      // 返回一个清理函数，通常在组件失去焦点时不需要特殊处理
-      return () => {};
-    }, [loadNotes]),
-  );
+    // 初始加载及获得焦点时加载
+    useFocusEffect(
+      React.useCallback(() => {
+        const fetchData = async () => {
+          await loadNotes();
+        };
 
-  return (
-    <View style={styles.container}>
-      {/* 选择模式工具栏 */}
-      {isSelectionMode && (
-        <View style={styles.selectionToolbar}>
-          <View style={styles.selectionToolbarLeft}>
-            <TouchableOpacity onPress={toggleSelectAll} style={styles.toolbarButton}>
-              <Text style={styles.toolbarButtonText}>
-                {selectedCount === notes.length ? '取消全选' : '全选'}
-              </Text>
-            </TouchableOpacity>
-            <Text style={styles.selectedCountText}>
-              已选择 {selectedCount} / {notes.length}
-            </Text>
-          </View>
+        void fetchData();
 
-          <View style={styles.selectionToolbarRight}>
-            <TouchableOpacity
-              onPress={confirmBatchDelete}
-              style={[styles.toolbarButton, styles.deleteButton]}
-              disabled={selectedCount === 0}
-            >
-              <Text style={[styles.toolbarButtonText, styles.deleteButtonText]}>删除</Text>
-            </TouchableOpacity>
+        // 返回一个清理函数，通常在组件失去焦点时不需要特殊处理
+        return () => {};
+      }, [loadNotes]),
+    );
 
-            <TouchableOpacity onPress={toggleSelectionMode} style={styles.toolbarButton}>
-              <Text style={styles.toolbarButtonText}>完成</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* 笔记网格 */}
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        <View style={styles.gridContainer}>
-          {notes.map((note) => {
-            const isSelected = selectedNotes[note.id];
-
-            return (
-              <TouchableOpacity
-                key={note.id}
-                style={[styles.card, isSelected && styles.selectedCard]}
-                onPress={() => {
-                  if (isSelectionMode) {
-                    toggleNoteSelection(note.id);
-                  } else {
-                    router.push({
-                      pathname: '/edit',
-                      params: { id: note.id, title: note.title, content: note.content },
-                    });
-                  }
-                }}
-                onLongPress={() => {
-                  if (!isSelectionMode) {
-                    toggleSelectionMode();
-                    toggleNoteSelection(note.id);
-                  }
-                }}
-              >
-                {/* 选择复选框 */}
-                {isSelectionMode && (
-                  <View style={styles.checkboxContainer}>
-                    <Ionicons
-                      name={isSelected ? 'checkbox' : 'square-outline'}
-                      size={20}
-                      color={isSelected ? '#007AFF' : '#ccc'}
-                    />
-                  </View>
-                )}
-
-                <Text style={styles.cardTitle} numberOfLines={1}>
-                  {truncateText(note.title, 10)}
-                </Text>
-                <Text style={styles.cardContent} numberOfLines={2}>
-                  {truncateText(note.content, 30)}
-                </Text>
-                <Text style={styles.cardDate}>
-                  {new Date(note.updated_at).toLocaleDateString()}
+    return (
+      <View style={styles.container}>
+        {/* 选择模式工具栏 */}
+        {isSelectionMode && (
+          <View style={styles.selectionToolbar}>
+            <View style={styles.selectionToolbarLeft}>
+              <TouchableOpacity onPress={toggleSelectAll} style={styles.toolbarButton}>
+                <Text style={styles.toolbarButtonText}>
+                  {selectedCount === notes.length ? '取消全选' : '全选'}
                 </Text>
               </TouchableOpacity>
-            );
-          })}
-
-          {/* 空状态 */}
-          {!isLoading && notes.length === 0 && (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>暂无笔记</Text>
+              <Text style={styles.selectedCountText}>
+                已选择 {selectedCount} / {notes.length}
+              </Text>
             </View>
-          )}
-        </View>
 
-        {isLoading && (
-          <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>加载中...</Text>
+            <View style={styles.selectionToolbarRight}>
+              <TouchableOpacity
+                onPress={confirmBatchDelete}
+                style={[styles.toolbarButton, styles.deleteButton]}
+                disabled={selectedCount === 0}
+              >
+                <Text style={[styles.toolbarButtonText, styles.deleteButtonText]}>删除</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={toggleSelectionMode} style={styles.toolbarButton}>
+                <Text style={styles.toolbarButtonText}>完成</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
-      </ScrollView>
 
-      {/* 批量删除确认模态框 */}
-      <DeleteConfirmationModal
-        visible={showBatchDeleteModal}
-        onClose={() => setShowBatchDeleteModal(false)}
-        onConfirm={handleBatchDelete}
-        title={`删除 ${selectedCount} 条笔记`}
-        message={`确定要删除这 ${selectedCount} 条笔记吗？此操作无法撤销。`}
-        confirmText="删除"
-        cancelText="取消"
-        isLoading={batchDeleteLoading}
-      />
-    </View>
-  );
-};
+        {/* 笔记网格 */}
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          <View style={styles.gridContainer}>
+            {notes.map((note) => {
+              const isSelected = selectedNotes[note.id];
+
+              return (
+                <TouchableOpacity
+                  key={note.id}
+                  style={[styles.card, isSelected && styles.selectedCard]}
+                  onPress={() => {
+                    if (isSelectionMode) {
+                      toggleNoteSelection(note.id);
+                    } else {
+                      router.push({
+                        pathname: '/edit',
+                        params: { id: note.id, title: note.title, content: note.content },
+                      });
+                    }
+                  }}
+                  onLongPress={() => {
+                    if (!isSelectionMode) {
+                      toggleSelectionMode();
+                      toggleNoteSelection(note.id);
+                    }
+                  }}
+                >
+                  {/* 选择复选框 */}
+                  {isSelectionMode && (
+                    <View style={styles.checkboxContainer}>
+                      <Ionicons
+                        name={isSelected ? 'checkbox' : 'square-outline'}
+                        size={20}
+                        color={isSelected ? '#007AFF' : '#ccc'}
+                      />
+                    </View>
+                  )}
+
+                  <Text style={styles.cardTitle} numberOfLines={1}>
+                    {truncateText(note.title, 10)}
+                  </Text>
+                  <Text style={styles.cardContent} numberOfLines={2}>
+                    {truncateText(note.content, 30)}
+                  </Text>
+                  <Text style={styles.cardDate}>
+                    {new Date(note.updated_at).toLocaleDateString()}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            {/* 空状态 */}
+            {!isLoading && notes.length === 0 && (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>暂无笔记</Text>
+              </View>
+            )}
+          </View>
+
+          {isLoading && (
+            <View style={styles.loadingContainer}>
+              <Text style={styles.loadingText}>加载中...</Text>
+            </View>
+          )}
+        </ScrollView>
+
+        {/* 批量删除确认模态框 */}
+        <DeleteConfirmationModal
+          visible={showBatchDeleteModal}
+          onClose={() => setShowBatchDeleteModal(false)}
+          onConfirm={handleBatchDelete}
+          title={`删除 ${selectedCount} 条笔记`}
+          message={`确定要删除这 ${selectedCount} 条笔记吗？此操作无法撤销。`}
+          confirmText="删除"
+          cancelText="取消"
+        />
+      </View>
+    );
+  },
+);
+
+export default NoteListWithSelection;
 
 const styles = StyleSheet.create({
   container: {
@@ -393,5 +400,3 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 });
-
-export default NoteListWithSelection;

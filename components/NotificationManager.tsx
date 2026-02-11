@@ -1,14 +1,5 @@
 import React, { createContext, ReactNode, useContext, useState } from 'react';
-import {
-  Animated,
-  Modal,
-  Platform,
-  StyleSheet,
-  Text,
-  ToastAndroid,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Platform, StyleSheet, Text, ToastAndroid, View } from 'react-native';
 
 interface NotificationContextProps {
   showSuccess: (message: string) => void;
@@ -32,52 +23,21 @@ interface NotificationProviderProps {
 }
 
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
-  const [modalVisible, setModalVisible] = useState(false);
-  const [notificationMessage, setNotificationMessage] = useState('');
-  const [notificationType, setNotificationType] = useState<
-    'success' | 'error' | 'info' | 'warning'
-  >('info');
-  const fadeAnim = new Animated.Value(0);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'error' | 'info' | 'warning'>('info');
 
   const showCustomToast = (
     message: string,
     type: 'success' | 'error' | 'info' | 'warning' = 'info',
   ) => {
     setToastMessage(message);
+    setToastType(type);
     setToastVisible(true);
 
     setTimeout(() => {
       setToastVisible(false);
     }, 3000);
-  };
-
-  const showAlert = (
-    title: string,
-    message: string,
-    type: 'success' | 'error' | 'info' | 'warning' = 'info',
-  ) => {
-    setNotificationMessage(message);
-    setNotificationType(type);
-    setModalVisible(true);
-
-    // 动画效果
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const hideAlert = () => {
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      setModalVisible(false);
-    });
   };
 
   const showSuccess = (message: string) => {
@@ -89,15 +49,18 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   };
 
   const showError = (message: string) => {
-    showAlert('错误', message, 'error');
+    // 使用 Toast 而不是模态框，避免阻塞用户交互
+    showCustomToast(message, 'error');
   };
 
   const showInfo = (message: string) => {
-    showAlert('提示', message, 'info');
+    // 使用 Toast 而不是模态框，避免阻塞用户交互
+    showCustomToast(message, 'info');
   };
 
   const showWarning = (message: string) => {
-    showAlert('警告', message, 'warning');
+    // 使用 Toast 而不是模态框，避免阻塞用户交互
+    showCustomToast(message, 'warning');
   };
 
   // 获取通知类型对应的颜色
@@ -128,43 +91,10 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
         {children}
       </NotificationContext.Provider>
 
-      {/* 自定义模态通知 */}
-      <Modal
-        animationType="none"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={hideAlert}
-      >
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={hideAlert}>
-          <Animated.View style={[styles.modalContainer, { opacity: fadeAnim }]}>
-            <View
-              style={[
-                styles.modalContent,
-                { borderLeftColor: getNotificationColor(notificationType), borderLeftWidth: 5 },
-              ]}
-            >
-              <Text style={styles.modalTitle}>
-                {notificationType === 'error'
-                  ? '错误'
-                  : notificationType === 'warning'
-                    ? '警告'
-                    : notificationType === 'success'
-                      ? '成功'
-                      : '提示'}
-              </Text>
-              <Text style={styles.modalMessage}>{notificationMessage}</Text>
-              <TouchableOpacity style={styles.modalButton} onPress={hideAlert}>
-                <Text style={styles.modalButtonText}>确定</Text>
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Toast通知 */}
+      {/* Toast通知 - 非阻塞性提示 */}
       {toastVisible && (
-        <View style={styles.toastContainer}>
-          <View style={[styles.toast, { backgroundColor: getNotificationColor('info') }]}>
+        <View style={styles.toastContainer} pointerEvents="none">
+          <View style={[styles.toast, { backgroundColor: getNotificationColor(toastType) }]}>
             <Text style={styles.toastText}>{toastMessage}</Text>
           </View>
         </View>
@@ -174,45 +104,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 };
 
 const styles = StyleSheet.create({
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContainer: {
-    width: '80%',
-    maxWidth: 300,
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 8,
-    elevation: 5,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#333',
-  },
-  modalMessage: {
-    fontSize: 16,
-    marginBottom: 15,
-    color: '#666',
-    lineHeight: 22,
-  },
-  modalButton: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 5,
-  },
-  modalButtonText: {
-    color: '#333',
-    fontSize: 16,
-  },
   toastContainer: {
     position: 'absolute',
     top: 80,

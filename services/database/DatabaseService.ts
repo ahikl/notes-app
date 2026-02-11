@@ -257,51 +257,147 @@ export const batchOperationNotes = async (
 /**
  * 4. 同步逻辑优化：内存 Map 对比
  * 解决高频查询带来的性能瓶颈和死锁
+ * 支持双向删除状态同步和缺失笔记拉取
+ *
+ * 时间戳比较规则：
+ * - 服务端时间 > 本地时间：使用服务端数据（包括删除状态）
+ * - 服务端时间 = 本地时间：同步完成，更新 sync_status
+ * - 服务端时间 < 本地时间：保持本地数据
  */
 export const syncWithServer = async (serverNotes: Note[]) => {
+  console.log(`[DatabaseService] syncWithServer 开始，服务端笔记数量: ${serverNotes.length}`);
+  console.log(
+    `[DatabaseService] 服务端笔记ID列表:`,
+    serverNotes.map((n) => n.id),
+  );
+
   return executeDbOperation(async (dbInstance) => {
     // 1. 一次性获取本地所有索引，避免在循环中重复查库
     const localNotes = await dbInstance.getAllAsync<Note>(`SELECT * FROM ${NOTES_TABLE}`);
     const localMap = new Map(localNotes.map((n) => [n.id, n]));
+    const serverMap = new Map(serverNotes.map((n) => [n.id, n]));
+
+    console.log(`[DatabaseService] 本地笔记数量: ${localNotes.length}`);
+    console.log(
+      `[DatabaseService] 本地笔记ID列表:`,
+      localNotes.map((n) => n.id),
+    );
 
     await dbInstance.withTransactionAsync(async () => {
+      // 第一阶段：处理服务器返回的笔记（服务端 -> 客户端同步）
       for (const sNote of serverNotes) {
         const lNote = localMap.get(sNote.id);
 
         if (sNote.is_deleted === 1) {
+          // 服务端笔记已删除，根据时间戳决定是否同步删除状态
           if (lNote) {
-            await dbInstance.runAsync(
-              `UPDATE ${NOTES_TABLE} SET is_deleted = 1, sync_status = 0, updated_at = ? WHERE id = ?`,
-              [sNote.updated_at, sNote.id],
-            );
-            console.log('从服务器同步删除笔记:', sNote.id);
+            const serverTime = new Date(sNote.updated_at).getTime();
+            const localTime = new Date(lNote.updated_at).getTime();
+
+            console.log(`[数据库] 删除状态时间戳对比 ${sNote.id}:`, {
+              serverTime: sNote.updated_at,
+              localTime: lNote.updated_at,
+              serverTimestamp: serverTime,
+              localTimestamp: localTime,
+              diff: serverTime - localTime,
+              localIsDeleted: lNote.is_deleted,
+              result:
+                serverTime > localTime
+                  ? '服务端较新，同步删除'
+                  : serverTime < localTime
+                    ? '本地较新，保持本地'
+                    : '时间相同，同步删除',
+            });
+
+            // 只有服务端时间戳 >= 本地时间戳时才同步删除状态
+            if (serverTime >= localTime) {
+              if (lNote.is_deleted === 0) {
+                // 本地未删除，同步删除状态
+                await dbInstance.runAsync(
+                  `UPDATE ${NOTES_TABLE} SET is_deleted = 1, sync_status = 0, updated_at = ? WHERE id = ?`,
+                  [sNote.updated_at, sNote.id],
+                );
+                console.log('从服务器同步删除状态到本地:', sNote.id);
+              } else {
+                // 本地已删除，只需更新同步状态
+                await dbInstance.runAsync(
+                  `UPDATE ${NOTES_TABLE} SET sync_status = 0, updated_at = ? WHERE id = ?`,
+                  [sNote.updated_at, sNote.id],
+                );
+                console.log('服务端确认本地删除状态:', sNote.id);
+              }
+            } else {
+              // 本地较新，保持本地状态，并标记为需要上传
+              console.log('本地笔记较新，保持本地未删除状态并标记上传:', sNote.id);
+              await dbInstance.runAsync(`UPDATE ${NOTES_TABLE} SET sync_status = 1 WHERE id = ?`, [
+                sNote.id,
+              ]);
+            }
           }
+          // 如果本地没有这条笔记且服务端已删除，无需操作
         } else if (!lNote) {
-          // 本地没有，直接插入
+          // 本地没有，服务端有且未删除，拉取到新笔记
           const sNoteAny = sNote as any;
-          console.log(`[数据库] 从服务器插入新笔记 ${sNote.id}:`, {
+          console.log(`[数据库] 从服务器拉取新笔记 ${sNote.id}:`, {
             is_encrypted: sNote.is_encrypted,
             has_iv: !!sNoteAny.iv,
+            iv_value: sNoteAny.iv ? sNoteAny.iv.substring(0, 20) + '...' : 'null',
             has_auth_tag: !!sNoteAny.auth_tag,
+            auth_tag_value: sNoteAny.auth_tag ? sNoteAny.auth_tag.substring(0, 20) + '...' : 'null',
             is_deleted: sNote.is_deleted,
+            content_length: sNote.content ? sNote.content.length : 0,
           });
-          await dbInstance.runAsync(
-            `INSERT INTO ${NOTES_TABLE} (id, title, content, iv, auth_tag, is_encrypted, sync_status, is_deleted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
-            [
-              sNote.id,
-              sNote.title,
-              sNote.content,
-              sNoteAny.iv ?? null,
-              sNoteAny.auth_tag ?? null,
-              sNote.is_encrypted ?? 0,
-              sNote.created_at,
-              sNote.updated_at,
-            ],
-          );
-          console.log('从服务器插入新笔记:', sNote.id);
+
+          // 确保 iv 和 auth_tag 正确提取
+          const ivValue = sNoteAny.iv || null;
+          const authTagValue = sNoteAny.auth_tag || null;
+
+          console.log(`[数据库] 准备插入新笔记 ${sNote.id}:`, {
+            iv_final: ivValue ? ivValue.substring(0, 20) + '...' : 'null',
+            auth_tag_final: authTagValue ? authTagValue.substring(0, 20) + '...' : 'null',
+          });
+
+          try {
+            await dbInstance.runAsync(
+              `INSERT INTO ${NOTES_TABLE} (id, title, content, iv, auth_tag, is_encrypted, sync_status, is_deleted, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
+              [
+                sNote.id,
+                sNote.title,
+                sNote.content,
+                ivValue,
+                authTagValue,
+                sNote.is_encrypted ?? 0,
+                sNote.created_at,
+                sNote.updated_at,
+              ],
+            );
+            console.log('[数据库] 从服务器拉取新笔记到本地成功:', sNote.id);
+          } catch (insertError) {
+            console.error(`[数据库] 插入新笔记 ${sNote.id} 失败:`, insertError);
+            throw insertError;
+          }
         } else {
-          // 本地有，比对时间戳
-          if (new Date(sNote.updated_at).getTime() > new Date(lNote.updated_at).getTime()) {
+          // 本地有，服务端也有，比对时间戳进行合并
+          const serverTime = new Date(sNote.updated_at).getTime();
+          const localTime = new Date(lNote.updated_at).getTime();
+
+          // 添加详细的时间戳对比日志
+          console.log(`[数据库] 时间戳对比 ${sNote.id}:`, {
+            serverTime: sNote.updated_at,
+            localTime: lNote.updated_at,
+            serverTimestamp: serverTime,
+            localTimestamp: localTime,
+            diff: serverTime - localTime,
+            result:
+              serverTime > localTime
+                ? '服务端较新'
+                : serverTime < localTime
+                  ? '本地较新'
+                  : '时间相同',
+          });
+
+          if (serverTime > localTime) {
+            // 服务端版本较新，更新本地（使用服务端返回的 is_deleted 值）
             const sNoteAny = sNote as any;
             console.log(`[数据库] 从服务器更新笔记 ${sNote.id}:`, {
               is_encrypted: sNote.is_encrypted,
@@ -309,21 +405,58 @@ export const syncWithServer = async (serverNotes: Note[]) => {
               has_auth_tag: !!sNoteAny.auth_tag,
               is_deleted: sNote.is_deleted,
             });
+            // 修复：使用服务端返回的 is_deleted 值，而不是强制设置为 0
             await dbInstance.runAsync(
-              `UPDATE ${NOTES_TABLE} SET title=?, content=?, iv=?, auth_tag=?, is_encrypted=?, sync_status=0, updated_at=? WHERE id=?`,
+              `UPDATE ${NOTES_TABLE} SET title=?, content=?, iv=?, auth_tag=?, is_encrypted=?, sync_status=0, is_deleted=?, updated_at=? WHERE id=?`,
               [
                 sNote.title,
                 sNote.content,
                 sNoteAny.iv ?? null,
                 sNoteAny.auth_tag ?? null,
                 sNote.is_encrypted ?? 0,
+                sNote.is_deleted ?? 0, // 使用服务端返回的删除状态
                 sNote.updated_at,
                 sNote.id,
               ],
             );
-            console.log('从服务器更新笔记:', sNote.id);
+            console.log('从服务器更新笔记到本地:', sNote.id);
+          } else if (serverTime === localTime) {
+            // 时间戳相同，表示已同步，更新同步状态
+            if (lNote.sync_status === 1) {
+              await dbInstance.runAsync(`UPDATE ${NOTES_TABLE} SET sync_status = 0 WHERE id = ?`, [
+                sNote.id,
+              ]);
+              console.log('笔记同步状态更新为已同步:', sNote.id);
+            } else {
+              console.log('笔记时间戳相同且已同步，无需操作:', sNote.id);
+            }
           } else {
-            console.log('本地笔记较新，跳过同步:', sNote.id);
+            // 本地较新，保持本地版本，并标记为需要上传
+            console.log('本地笔记较新，保持本地版本并标记上传:', sNote.id);
+            await dbInstance.runAsync(`UPDATE ${NOTES_TABLE} SET sync_status = 1 WHERE id = ?`, [
+              sNote.id,
+            ]);
+          }
+        }
+      }
+
+      // 第二阶段：处理本地有但服务端没有的笔记
+      // 这些笔记需要标记为待同步（sync_status = 1），让服务端知道需要创建或确认删除
+      for (const lNote of localNotes) {
+        if (!serverMap.has(lNote.id)) {
+          // 本地有，服务端没有
+          if (lNote.is_deleted === 1) {
+            // 本地已删除，服务端没有这条笔记，视为已同步
+            if (lNote.sync_status === 1) {
+              await dbInstance.runAsync(`UPDATE ${NOTES_TABLE} SET sync_status = 0 WHERE id = ?`, [
+                lNote.id,
+              ]);
+              console.log('本地删除笔记在服务端不存在，标记为已同步:', lNote.id);
+            }
+          } else {
+            // 本地未删除，服务端没有，需要上传到服务端
+            // 保持 sync_status = 1，让后续同步逻辑处理上传
+            console.log('本地笔记在服务端不存在，需要上传:', lNote.id);
           }
         }
       }

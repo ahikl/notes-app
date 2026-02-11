@@ -16,14 +16,14 @@ export interface Note {
 // 包含所有加密相关的Base64编码字段
 export interface SyncNote {
   id: string;
-  title: string;
-  content: string; // Base64编码的加密内容
+  title?: string; // 可选，删除标记时可能不包含
+  content?: string; // Base64编码的加密内容，可选
   iv?: string; // Base64编码的初始化向量
   auth_tag?: string; // Base64编码的认证标签
-  is_encrypted: number;
+  is_encrypted?: number;
   is_deleted?: number; // 删除状态，用于同步删除操作
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at: string; // 必需，用于时间戳比较
 }
 
 // 本地数据库存储的笔记类型
@@ -94,7 +94,10 @@ export interface BatchOperationNoteRequest {
 // 批量操作笔记响应类型
 export interface BatchOperationNoteResponse {
   success: boolean;
-  insertedUpdatedCount: number;
+  insertedCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  skippedIds: string[];
 }
 
 // 批量删除笔记请求类型
@@ -126,14 +129,120 @@ export interface GetNotesQuery {
   search?: string;
 }
 
-// 同步笔记请求参数类型
+// 同步笔记请求参数类型（新API规范）
 export interface SyncNotesRequest {
-  clientNotes: SyncNote[]; // 使用SyncNote进行API传输
+  localNoteIds: string[]; // 客户端当前拥有的所有笔记ID数组（包括已删除的）
+  localDeletedNoteIds?: string[]; // 客户端标记为已删除的笔记ID数组
+  lastSyncTimestamp: string; // 客户端上次同步的时间戳（ISO 8601格式）
 }
 
-// 同步笔记响应类型
+// 同步笔记响应类型（新API规范）
 export interface SyncNotesResponse {
   success: boolean;
-  updates: SyncNote[]; // 使用SyncNote进行API传输
-  syncedIds: string[];
+  toUpdate: SyncNote[]; // 需要客户端更新的完整笔记数据列表
+  toDelete: SyncNote[]; // 需要客户端删除的笔记元数据列表
+  toRestore: SyncNote[]; // 需要客户端恢复的完整笔记数据列表
+  serverNoteCount: number; // 服务端当前未删除的笔记总数
+  syncTimestamp: string; // 本次同步时间戳
+}
+
+// ========== 细粒度同步API类型定义 ==========
+
+// 同步状态查询请求
+export interface SyncStatusRequest {
+  localNoteIds: string[];
+  localDeletedNoteIds: string[];
+}
+
+// 同步状态查询响应
+export interface SyncStatusResponse {
+  success: boolean;
+  serverNoteCount: number;
+  clientHasServerMissing: number;
+  serverHasClientMissing: number;
+  deleteStatusMismatch: number;
+}
+
+// 增量更新查询请求
+export interface SyncIncrementalRequest {
+  lastSyncTimestamp: string;
+  localNoteIds: string[];
+}
+
+// 增量更新查询响应
+export interface SyncIncrementalResponse {
+  success: boolean;
+  notes: SyncNote[];
+  count: number;
+}
+
+// 新增笔记查询请求
+export interface SyncNewNotesRequest {
+  localNoteIds: string[];
+}
+
+// 新增笔记查询响应
+export interface SyncNewNotesResponse {
+  success: boolean;
+  newNoteIds: string[];
+  count: number;
+}
+
+// 完整数据获取请求
+export interface SyncFullDataRequest {
+  ids: string[];
+}
+
+// 完整数据获取响应
+export interface SyncFullDataResponse {
+  success: boolean;
+  notes: SyncNote[];
+  count: number;
+}
+
+// 删除同步请求
+export interface SyncDeletionsRequest {
+  localNoteIds: string[];
+  localDeletedNoteIds: string[];
+}
+
+// 删除同步响应
+export interface SyncDeletionsResponse {
+  success: boolean;
+  deletions: {
+    id: string;
+    is_deleted: number;
+    updated_at: string;
+  }[];
+  count: number;
+}
+
+// 恢复同步请求
+export interface SyncRestoreRequest {
+  localNoteIds: string[];
+  localDeletedNoteIds: string[];
+}
+
+// 恢复同步响应
+export interface SyncRestoreResponse {
+  success: boolean;
+  restoreIds: string[];
+  count: number;
+}
+
+// 细粒度同步结果汇总
+export interface FineGrainedSyncResult {
+  success: boolean;
+  toUpdate: SyncNote[];
+  toDelete: SyncNote[];
+  toRestore: SyncNote[];
+  serverNoteCount: number;
+  syncTimestamp: string;
+  // 统计信息
+  stats: {
+    incrementalUpdates: number;
+    newNotes: number;
+    deletions: number;
+    restorations: number;
+  };
 }

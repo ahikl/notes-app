@@ -40,9 +40,34 @@ export const databaseNoteToSyncNote = (note: DatabaseNote): SyncNote => {
 };
 
 /**
+ * 将十六进制字符串转换为 Base64 字符串
+ * 支持 0x 前缀的十六进制字符串
+ */
+const hexToBase64 = (hexStr: string): string => {
+  try {
+    // 移除 0x 前缀（如果存在）
+    const hex = hexStr.startsWith('0x') ? hexStr.slice(2) : hexStr;
+    // 将十六进制转换为 Buffer，然后转为 Base64
+    const buffer = Buffer.from(hex, 'hex');
+    return buffer.toString('base64');
+  } catch (error) {
+    console.error('十六进制转 Base64 失败:', error);
+    return hexStr; // 转换失败时返回原值
+  }
+};
+
+/**
+ * 检查字符串是否为十六进制格式
+ */
+const isHexString = (str: string): boolean => {
+  if (!str || typeof str !== 'string') return false;
+  return str.startsWith('0x') || /^[0-9a-fA-F]+$/.test(str);
+};
+
+/**
  * 将同步笔记转换为数据库笔记格式（用于本地存储）
  * 对于明文笔记，将 Base64 解码回 UTF-8
- * 对于加密笔记，保持 Base64 格式存储
+ * 对于加密笔记，保持 Base64 格式存储（如果是十六进制则自动转换）
  *
  * @param syncNote 同步格式的笔记对象
  * @param syncStatus 同步状态（可选，默认为0）
@@ -58,25 +83,52 @@ export const syncNoteToDatabaseNote = (
   let decodedContent = syncNote.content;
   if (syncNote.is_encrypted !== 1) {
     // 明文笔记，需要 Base64 解码
-    try {
-      decodedContent = Buffer.from(syncNote.content, 'base64').toString('utf8');
-    } catch (error) {
-      console.error('Base64 解码失败:', error);
-      // 如果解码失败，保持原样
+    if (syncNote.content) {
+      try {
+        decodedContent = Buffer.from(syncNote.content, 'base64').toString('utf8');
+      } catch (error) {
+        console.error('Base64 解码失败:', error);
+        // 如果解码失败，保持原样
+      }
+    }
+  } else {
+    // 加密笔记：如果是十六进制格式，转换为 Base64
+    if (syncNote.content && isHexString(syncNote.content)) {
+      decodedContent = hexToBase64(syncNote.content);
+      console.log(`[SyncDataUtils] 笔记 ${syncNote.id} 的 content 从十六进制转换为 Base64`);
     }
   }
-  // 加密笔记的 content 保持 Base64 格式存储
+
+  // 处理 iv 和 auth_tag：如果是十六进制格式，转换为 Base64
+  const iv = syncNote.iv && isHexString(syncNote.iv) ? hexToBase64(syncNote.iv) : syncNote.iv;
+  const authTag =
+    syncNote.auth_tag && isHexString(syncNote.auth_tag)
+      ? hexToBase64(syncNote.auth_tag)
+      : syncNote.auth_tag;
+
+  // 安全检查：确保 iv 和 auth_tag 不是 undefined
+  const safeIv = iv ?? undefined;
+  const safeAuthTag = authTag ?? undefined;
+
+  if (syncNote.is_encrypted === 1) {
+    if (syncNote.iv && isHexString(syncNote.iv)) {
+      console.log(`[SyncDataUtils] 笔记 ${syncNote.id} 的 iv 从十六进制转换为 Base64`);
+    }
+    if (syncNote.auth_tag && isHexString(syncNote.auth_tag)) {
+      console.log(`[SyncDataUtils] 笔记 ${syncNote.id} 的 auth_tag 从十六进制转换为 Base64`);
+    }
+  }
 
   return {
     id: syncNote.id,
-    title: syncNote.title,
-    content: decodedContent, // 明文笔记是 UTF-8，加密笔记是 Base64
-    iv: syncNote.iv, // Base64 编码的 IV
-    auth_tag: syncNote.auth_tag, // Base64 编码的认证标签
-    is_encrypted: syncNote.is_encrypted,
+    title: syncNote.title ?? '',
+    content: decodedContent ?? '', // 明文笔记是 UTF-8，加密笔记是 Base64
+    iv: safeIv, // Base64 编码的 IV
+    auth_tag: safeAuthTag, // Base64 编码的认证标签
+    is_encrypted: syncNote.is_encrypted ?? 0,
     sync_status: syncStatus,
     is_deleted: isDeleted,
-    created_at: syncNote.created_at,
+    created_at: syncNote.created_at ?? syncNote.updated_at ?? new Date().toISOString(),
     updated_at: syncNote.updated_at,
   };
 };
@@ -117,14 +169,14 @@ export const syncNoteToNote = (
 ): Note => {
   return {
     id: syncNote.id,
-    title: syncNote.title,
-    content: syncNote.content,
+    title: syncNote.title ?? '',
+    content: syncNote.content ?? '',
     iv: syncNote.iv,
     auth_tag: syncNote.auth_tag,
-    is_encrypted: syncNote.is_encrypted,
+    is_encrypted: syncNote.is_encrypted ?? 0,
     sync_status: syncStatus,
     is_deleted: isDeleted,
-    created_at: syncNote.created_at,
+    created_at: syncNote.created_at ?? new Date().toISOString(),
     updated_at: syncNote.updated_at,
   };
 };
@@ -191,6 +243,10 @@ export const isValidBase64 = (str: string | undefined): boolean => {
 /**
  * 验证同步笔记数据的完整性
  * 检查加密笔记是否包含必需的加密字段
+ * 支持 Base64 和十六进制（0x开头）格式
+ *
+ * 注意：对于已删除的笔记（is_deleted=1），允许缺少 title 和 content 字段
+ * 因为删除标记可能只包含 id、is_deleted 和 updated_at
  *
  * @param note 同步笔记对象
  * @returns 验证结果
@@ -201,6 +257,15 @@ export const validateSyncNote = (note: SyncNote): { valid: boolean; error?: stri
     return { valid: false, error: '笔记ID不能为空' };
   }
 
+  // 对于已删除的笔记，只需要 id 和 updated_at 即可
+  if (note.is_deleted === 1) {
+    if (!note.updated_at) {
+      return { valid: false, error: '删除标记笔记缺少时间戳' };
+    }
+    return { valid: true };
+  }
+
+  // 非删除笔记需要完整的字段验证
   if (!note.title || typeof note.title !== 'string') {
     return { valid: false, error: '笔记标题不能为空' };
   }
@@ -220,18 +285,21 @@ export const validateSyncNote = (note: SyncNote): { valid: boolean; error?: stri
       return { valid: false, error: '加密笔记缺少初始化向量(IV)' };
     }
 
-    // 验证 IV 格式
-    if (!isValidBase64(note.iv)) {
+    // 验证 IV 格式（支持 Base64 或十六进制）
+    const isHexFormat = (str: string) => str.startsWith('0x') || /^[0-9a-fA-F]+$/.test(str);
+    const isBase64Format = (str: string) => isValidBase64(str);
+
+    if (!isBase64Format(note.iv) && !isHexFormat(note.iv)) {
       return { valid: false, error: '初始化向量(IV)格式无效' };
     }
 
-    // 验证内容格式
-    if (!isValidBase64(note.content)) {
+    // 验证内容格式（支持 Base64 或十六进制）
+    if (!isBase64Format(note.content) && !isHexFormat(note.content)) {
       return { valid: false, error: '加密内容格式无效' };
     }
 
     // 如果提供了 auth_tag，验证其格式
-    if (note.auth_tag && !isValidBase64(note.auth_tag)) {
+    if (note.auth_tag && !isBase64Format(note.auth_tag) && !isHexFormat(note.auth_tag)) {
       return { valid: false, error: '认证标签格式无效' };
     }
   }
@@ -285,9 +353,6 @@ export const prepareNotesForSync = (notes: Note[]): SyncNote[] => {
 
     // 如果是加密笔记，确保内容是 Base64 格式
     if (syncNote.is_encrypted === 1) {
-      // 如果内容不是 Base64 格式，需要转换
-      // 注意：这里假设 content 已经是加密后的 Base64 字符串
-      // 如果 content 是明文，应该在调用此函数之前进行加密
     }
 
     return syncNote;
@@ -302,11 +367,55 @@ export const prepareNotesForSync = (notes: Note[]): SyncNote[] => {
  * @returns 处理后的数据库笔记数组
  */
 export const processSyncUpdates = (updates: SyncNote[]): DatabaseNote[] => {
+  console.log(`[SyncDataUtils] 处理同步更新，原始数据数量: ${updates.length}`);
+
   const validUpdates = parseSyncResponseData(updates);
+  console.log(`[SyncDataUtils] 有效数据数量: ${validUpdates.length}`);
+
   // 保留服务器返回的删除状态
-  return validUpdates.map((syncNote) =>
-    syncNoteToDatabaseNote(syncNote, 0, syncNote.is_deleted || 0),
-  );
+  const result = validUpdates.map((syncNote) => {
+    const dbNote = syncNoteToDatabaseNote(syncNote, 0, syncNote.is_deleted || 0);
+    console.log(`[SyncDataUtils] 转换笔记 ${syncNote.id}:`, {
+      is_encrypted: dbNote.is_encrypted,
+      has_iv: !!dbNote.iv,
+      has_auth_tag: !!dbNote.auth_tag,
+      is_deleted: dbNote.is_deleted,
+    });
+    return dbNote;
+  });
+
+  console.log(`[SyncDataUtils] 处理完成，返回 ${result.length} 条笔记`);
+  return result;
+};
+
+/**
+ * 处理从服务器接收的同步更新（转换为 Note 格式）
+ * 用于 SyncService 中的冲突检测和处理
+ *
+ * @param updates 服务器返回的更新
+ * @returns 处理后的标准笔记数组
+ */
+export const processSyncUpdatesToNotes = (updates: SyncNote[]): Note[] => {
+  console.log(`[SyncDataUtils] 处理同步更新为 Note 格式，原始数据数量: ${updates.length}`);
+
+  const validUpdates = parseSyncResponseData(updates);
+  console.log(`[SyncDataUtils] 有效数据数量: ${validUpdates.length}`);
+
+  // 保留服务器返回的删除状态
+  const result = validUpdates.map((syncNote) => {
+    const note = syncNoteToNote(syncNote, 0, syncNote.is_deleted || 0);
+    console.log(`[SyncDataUtils] 转换笔记 ${syncNote.id}:`, {
+      is_encrypted: note.is_encrypted,
+      has_iv: !!note.iv,
+      has_auth_tag: !!note.auth_tag,
+      is_deleted: note.is_deleted,
+      updated_at: note.updated_at,
+    });
+    return note;
+  });
+
+  console.log(`[SyncDataUtils] 处理完成，返回 ${result.length} 条笔记`);
+  return result;
 };
 
 export default {
@@ -321,4 +430,5 @@ export default {
   parseSyncResponseData,
   prepareNotesForSync,
   processSyncUpdates,
+  processSyncUpdatesToNotes,
 };
