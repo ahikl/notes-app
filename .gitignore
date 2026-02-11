@@ -39,7 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
-
+coverage
 .husky/_/
 .eas/
 local-app-config.json
