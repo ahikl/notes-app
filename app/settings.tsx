@@ -20,7 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { showSuccess, showError } = useNotification();
+  const { showSuccess, showError, showLoading, hideLoading } = useNotification();
   const { themePreference, setThemePreference, effectiveTheme } = useTheme();
   const [showThemeModal, setShowThemeModal] = useState(false);
   const fadeAnim = React.useRef(new Animated.Value(0)).current;
@@ -63,14 +63,17 @@ export default function SettingsScreen() {
   };
 
   const handleSyncNotes = async () => {
+    showLoading('正在同步笔记...');
     try {
       const result = await synchronizeNotes();
+      hideLoading();
       const totalChanges =
         (result.toUpdate?.length || 0) +
         (result.toDelete?.length || 0) +
         (result.toRestore?.length || 0);
       showSuccess(`同步成功！更新了 ${totalChanges} 条笔记。`);
     } catch (error) {
+      hideLoading();
       console.error('同步失败:', error);
       showError('笔记同步失败，请检查网络连接和API设置。');
     }

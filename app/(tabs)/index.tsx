@@ -14,11 +14,13 @@ export default function IndexScreen() {
   const noteListRef = useRef<{ refresh: () => void }>(null);
   const theme = useActualColorScheme();
 
-  const { showSuccess, showError } = useNotification();
+  const { showSuccess, showError, showLoading, hideLoading } = useNotification();
 
   const handleSync = async () => {
+    showLoading('正在同步笔记...');
     try {
       const result = await synchronizeNotes();
+      hideLoading();
       const totalChanges =
         (result.toUpdate?.length || 0) +
         (result.toDelete?.length || 0) +
@@ -30,6 +32,7 @@ export default function IndexScreen() {
         noteListRef.current.refresh();
       }
     } catch (error) {
+      hideLoading();
       console.error('同步失败:', error);
       showError('笔记同步失败，请检查网络连接和API设置。');
     }

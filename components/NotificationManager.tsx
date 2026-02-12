@@ -1,11 +1,14 @@
+import Colors from '@/constants/Colors';
 import React, { createContext, ReactNode, useContext, useState } from 'react';
-import { Platform, StyleSheet, Text, ToastAndroid, View } from 'react-native';
+import { Platform, StyleSheet, Text, ToastAndroid, useColorScheme, View } from 'react-native';
 
 interface NotificationContextProps {
   showSuccess: (message: string) => void;
   showError: (message: string) => void;
   showInfo: (message: string) => void;
   showWarning: (message: string) => void;
+  showLoading: (message: string) => void;
+  hideLoading: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextProps | undefined>(undefined);
@@ -23,13 +26,21 @@ interface NotificationProviderProps {
 }
 
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
+  const systemColorScheme = useColorScheme();
+  const theme = systemColorScheme === 'dark' ? 'dark' : 'light';
+  const colors = Colors[theme];
+
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
-  const [toastType, setToastType] = useState<'success' | 'error' | 'info' | 'warning'>('info');
+  const [toastType, setToastType] = useState<'success' | 'error' | 'info' | 'warning' | 'loading'>(
+    'info',
+  );
+  const [loadingVisible, setLoadingVisible] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
 
   const showCustomToast = (
     message: string,
-    type: 'success' | 'error' | 'info' | 'warning' = 'info',
+    type: 'success' | 'error' | 'info' | 'warning' | 'loading' = 'info',
   ) => {
     setToastMessage(message);
     setToastType(type);
@@ -38,6 +49,15 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     setTimeout(() => {
       setToastVisible(false);
     }, 3000);
+  };
+
+  const showLoading = (message: string) => {
+    setLoadingMessage(message);
+    setLoadingVisible(true);
+  };
+
+  const hideLoading = () => {
+    setLoadingVisible(false);
   };
 
   const showSuccess = (message: string) => {
@@ -64,15 +84,25 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   const getNotificationColor = (type: string) => {
     switch (type) {
       case 'success':
-        return '#4CAF50';
+        return theme === 'dark' ? 'rgba(76, 175, 80, 0.85)' : 'rgba(76, 175, 80, 0.9)';
       case 'error':
-        return '#F44336';
+        return theme === 'dark' ? 'rgba(244, 67, 54, 0.85)' : 'rgba(244, 67, 54, 0.9)';
       case 'warning':
-        return '#FF9800';
+        return theme === 'dark' ? 'rgba(255, 152, 0, 0.85)' : 'rgba(255, 152, 0, 0.9)';
+      case 'loading':
+        return theme === 'dark' ? 'rgba(176, 176, 176, 0.85)' : 'rgba(117, 117, 117, 0.9)';
       case 'info':
       default:
-        return '#2196F3';
+        return theme === 'dark' ? 'rgba(10, 132, 255, 0.85)' : 'rgba(47, 149, 220, 0.9)';
     }
+  };
+
+  const getLoadingBackgroundColor = () => {
+    return theme === 'dark' ? 'rgba(60, 60, 60, 0.85)' : 'rgba(50, 50, 50, 0.85)';
+  };
+
+  const getLoadingTextColor = () => {
+    return 'rgba(255, 255, 255, 0.95)';
   };
 
   return (
@@ -83,6 +113,8 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
           showError,
           showInfo,
           showWarning,
+          showLoading,
+          hideLoading,
         }}
       >
         {children}
@@ -93,6 +125,17 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
         <View style={styles.toastContainer} pointerEvents="none">
           <View style={[styles.toast, { backgroundColor: getNotificationColor(toastType) }]}>
             <Text style={styles.toastText}>{toastMessage}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* 加载提示 - 底部显示 */}
+      {loadingVisible && (
+        <View style={styles.loadingContainer} pointerEvents="none">
+          <View style={[styles.loadingToast, { backgroundColor: getLoadingBackgroundColor() }]}>
+            <Text style={[styles.loadingText, { color: getLoadingTextColor() }]}>
+              {loadingMessage}
+            </Text>
           </View>
         </View>
       )}
@@ -115,8 +158,34 @@ const styles = StyleSheet.create({
     minWidth: 200,
   },
   toastText: {
-    color: 'white',
+    color: 'rgba(255, 255, 255, 0.95)',
     fontSize: 16,
     textAlign: 'center',
+    fontWeight: '500',
+  },
+  loadingContainer: {
+    position: 'absolute',
+    bottom: 100,
+    left: 20,
+    right: 20,
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  loadingToast: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+    minWidth: 160,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  loadingText: {
+    fontSize: 14,
+    textAlign: 'center',
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
 });
