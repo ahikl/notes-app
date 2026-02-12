@@ -1,7 +1,7 @@
+/* eslint-disable no-undef */
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
-// eslint-disable-next-line no-undef
 const config = getDefaultConfig(__dirname);
 
 // 完全禁用Web平台
@@ -11,10 +11,7 @@ config.resolver.platforms = ['ios', 'android'];
 const isomorphicWebcryptoShim = path.resolve(__dirname, 'shims/isomorphic-webcrypto.js');
 const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (
-    moduleName === 'isomorphic-webcrypto' ||
-    moduleName.startsWith('isomorphic-webcrypto/')
-  ) {
+  if (moduleName === 'isomorphic-webcrypto' || moduleName.startsWith('isomorphic-webcrypto/')) {
     return { filePath: isomorphicWebcryptoShim, type: 'sourceFile' };
   }
   if (originalResolveRequest) {

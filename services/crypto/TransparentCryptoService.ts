@@ -345,13 +345,11 @@ export class TransparentCryptoService {
     note: PlainNoteData,
     shouldEncrypt: boolean,
   ): Promise<PlainNoteData> {
-    const updatedNote: PlainNoteData = {
+    return {
       ...note,
       is_encrypted: shouldEncrypt ? 1 : 0,
       updated_at: new Date().toISOString(),
     };
-
-    return updatedNote;
   }
 
   /**

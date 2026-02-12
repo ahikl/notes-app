@@ -49,17 +49,14 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   };
 
   const showError = (message: string) => {
-    // 使用 Toast 而不是模态框，避免阻塞用户交互
     showCustomToast(message, 'error');
   };
 
   const showInfo = (message: string) => {
-    // 使用 Toast 而不是模态框，避免阻塞用户交互
     showCustomToast(message, 'info');
   };
 
   const showWarning = (message: string) => {
-    // 使用 Toast 而不是模态框，避免阻塞用户交互
     showCustomToast(message, 'warning');
   };
 

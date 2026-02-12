@@ -364,12 +364,12 @@ const executeAggregatedSync = async (): Promise<SyncNotesResponse> => {
         mergedPlainNotes.map(async (note) => {
           if (note.is_encrypted === 1) {
             // 保留原始的删除状态，不要强制设置为 0
-            const encrypted = await TransparentCryptoService.encryptNote({
+
+            return await TransparentCryptoService.encryptNote({
               ...note,
               sync_status: 0,
               is_deleted: note.is_deleted ?? 0,
             });
-            return encrypted;
           }
           return note;
         }),

@@ -1,5 +1,7 @@
 import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
 import { useNotification } from '@/components/NotificationManager';
+import { useActualColorScheme } from '@/components/ThemeManager';
+import Colors from '@/constants/Colors';
 import { batchDeleteNotes, getNotes } from '@/services/local/LocalNoteService';
 import { Note } from '@/types/notes/NoteTypes';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,9 +39,10 @@ const truncateText = (text: string, maxLength: number) => {
 };
 
 const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithSelectionProps>(
-  ({ searchQuery = '', onRefresh }, ref) => {
+  function NoteListWithSelection({ searchQuery = '', onRefresh }, ref) {
     const router = useRouter();
     const { showSuccess, showError } = useNotification();
+    const theme = useActualColorScheme();
 
     const [notes, setNotes] = useState<Note[]>([]);
     const [selectedNotes, setSelectedNotes] = useState<Record<string, boolean>>({});
@@ -121,22 +124,23 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
       setSelectedNotes({});
       setIsSelectionMode(false);
 
-      // 立即刷新本地列表（从UI中移除已删除的笔记）
-      if (onRefresh) {
-        onRefresh();
-      } else {
-        void loadNotes();
-      }
+      // 先从本地状态中移除已删除的笔记，实现即时UI反馈
+      setNotes((prevNotes) => prevNotes.filter((note) => !selectedIds.includes(note.id)));
 
       // 在后台异步执行批量删除操作
       batchDeleteNotes(selectedIds)
         .then(() => {
           console.log(`批量删除成功: ${selectedIds.length} 条笔记`);
+          showSuccess(`成功删除 ${selectedIds.length} 条笔记`);
+          // 删除成功后重新加载笔记列表以确保数据一致性
+          void loadNotes();
         })
         .catch((error) => {
           console.error('批量删除失败:', error);
           // 异步删除失败不显示错误弹窗，仅记录日志
           // 删除状态已保存在本地，下次同步时会重试
+          // 发生错误时重新加载列表以恢复正确状态
+          void loadNotes();
         });
     };
 
@@ -163,32 +167,79 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
     );
 
     return (
-      <View style={styles.container}>
-        {/* 选择模式工具栏 */}
+      <View style={[styles.container, { backgroundColor: Colors[theme].background }]}>
+        {/* 选择模式工具栏 - 现代化设计 */}
         {isSelectionMode && (
-          <View style={styles.selectionToolbar}>
+          <View
+            style={[
+              styles.selectionToolbar,
+              {
+                backgroundColor: Colors[theme].selectionToolbar,
+                borderBottomColor: Colors[theme].selectionToolbarBorder,
+              },
+            ]}
+          >
             <View style={styles.selectionToolbarLeft}>
-              <TouchableOpacity onPress={toggleSelectAll} style={styles.toolbarButton}>
-                <Text style={styles.toolbarButtonText}>
-                  {selectedCount === notes.length ? '取消全选' : '全选'}
+              <TouchableOpacity
+                onPress={toggleSelectAll}
+                style={[
+                  styles.selectAllButton,
+                  selectedCount === notes.length &&
+                    notes.length > 0 &&
+                    styles.selectAllButtonActive,
+                ]}
+              >
+                <Ionicons
+                  name={
+                    selectedCount === notes.length && notes.length > 0
+                      ? 'checkmark-circle'
+                      : 'ellipse-outline'
+                  }
+                  size={18}
+                  color={selectedCount === notes.length && notes.length > 0 ? '#007AFF' : '#666'}
+                  style={styles.selectAllIcon}
+                />
+                <Text
+                  style={[
+                    styles.selectAllText,
+                    {
+                      color:
+                        selectedCount === notes.length && notes.length > 0
+                          ? Colors[theme].primary
+                          : Colors[theme].secondaryText,
+                    },
+                  ]}
+                >
+                  {selectedCount === notes.length && notes.length > 0 ? '取消全选' : '全选'}
                 </Text>
               </TouchableOpacity>
-              <Text style={styles.selectedCountText}>
-                已选择 {selectedCount} / {notes.length}
+            </View>
+
+            <View style={styles.selectionToolbarCenter}>
+              <Text style={[styles.selectedCountText, { color: Colors[theme].secondaryText }]}>
+                已选择{' '}
+                <Text style={[styles.selectedCountNumber, { color: Colors[theme].primary }]}>
+                  {selectedCount}
+                </Text>{' '}
+                项
               </Text>
             </View>
 
             <View style={styles.selectionToolbarRight}>
               <TouchableOpacity
                 onPress={confirmBatchDelete}
-                style={[styles.toolbarButton, styles.deleteButton]}
+                style={[
+                  styles.batchDeleteButton,
+                  selectedCount === 0 && { backgroundColor: Colors[theme].tabIconDefault },
+                ]}
                 disabled={selectedCount === 0}
               >
-                <Text style={[styles.toolbarButtonText, styles.deleteButtonText]}>删除</Text>
+                <Ionicons name="trash-outline" size={18} color="#fff" style={styles.deleteIcon} />
+                <Text style={styles.batchDeleteButtonText}>删除</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={toggleSelectionMode} style={styles.toolbarButton}>
-                <Text style={styles.toolbarButtonText}>完成</Text>
+              <TouchableOpacity onPress={toggleSelectionMode} style={styles.doneButton}>
+                <Text style={styles.doneButtonText}>完成</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -203,7 +254,17 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
               return (
                 <TouchableOpacity
                   key={note.id}
-                  style={[styles.card, isSelected && styles.selectedCard]}
+                  style={[
+                    styles.card,
+                    {
+                      backgroundColor: Colors[theme].cardBackground,
+                      borderColor: Colors[theme].cardBorder,
+                    },
+                    isSelected && {
+                      borderColor: Colors[theme].primary,
+                      backgroundColor: Colors[theme].selectedCardBackground,
+                    },
+                  ]}
                   onPress={() => {
                     if (isSelectionMode) {
                       toggleNoteSelection(note.id);
@@ -221,24 +282,25 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
                     }
                   }}
                 >
-                  {/* 选择复选框 */}
+                  {/* 选择复选框 - 现代化设计 */}
                   {isSelectionMode && (
                     <View style={styles.checkboxContainer}>
-                      <Ionicons
-                        name={isSelected ? 'checkbox' : 'square-outline'}
-                        size={20}
-                        color={isSelected ? '#007AFF' : '#ccc'}
-                      />
+                      <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                        {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+                      </View>
                     </View>
                   )}
 
-                  <Text style={styles.cardTitle} numberOfLines={1}>
+                  <Text style={[styles.cardTitle, { color: Colors[theme].text }]} numberOfLines={1}>
                     {truncateText(note.title, 10)}
                   </Text>
-                  <Text style={styles.cardContent} numberOfLines={2}>
+                  <Text
+                    style={[styles.cardContent, { color: Colors[theme].secondaryText }]}
+                    numberOfLines={2}
+                  >
                     {truncateText(note.content, 30)}
                   </Text>
-                  <Text style={styles.cardDate}>
+                  <Text style={[styles.cardDate, { color: Colors[theme].tertiaryText }]}>
                     {new Date(note.updated_at).toLocaleDateString()}
                   </Text>
                 </TouchableOpacity>
@@ -255,7 +317,9 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
 
           {isLoading && (
             <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>加载中...</Text>
+              <Text style={[styles.loadingText, { color: Colors[theme].tertiaryText }]}>
+                加载中...
+              </Text>
             </View>
           )}
         </ScrollView>
@@ -280,47 +344,115 @@ export default NoteListWithSelection;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
+  // 现代化选择模式工具栏
   selectionToolbar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#ddd',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   selectionToolbarLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+  },
+  selectionToolbarCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
   },
   selectionToolbarRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    flex: 1,
   },
-  toolbarButton: {
+  // 全选按钮 - 现代化设计
+  selectAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 5,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f5f5f5',
   },
-  deleteButton: {
-    backgroundColor: '#ff4444',
-    marginRight: 10,
+  selectAllButtonActive: {
+    backgroundColor: '#e6f2ff',
   },
-  deleteButtonText: {
+  selectAllIcon: {
+    marginRight: 6,
+  },
+  selectAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // 已选择计数 - 现代化设计
+  selectedCountText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  selectedCountNumber: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  // 批量删除按钮 - 现代化设计
+  batchDeleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#FF3B30',
+    marginRight: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#FF3B30',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  batchDeleteButtonDisabled: {
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  deleteIcon: {
+    marginRight: 6,
+  },
+  batchDeleteButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: '#fff',
   },
-  toolbarButtonText: {
+  // 完成按钮
+  doneButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  doneButtonText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#007AFF',
-  },
-  selectedCountText: {
-    marginLeft: 10,
-    fontSize: 14,
-    color: '#666',
   },
   scrollView: {
     flex: 1,
@@ -335,50 +467,82 @@ const styles = StyleSheet.create({
   },
   card: {
     width: cardWidth,
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 15,
     margin: cardMargin / 2,
     borderWidth: 1,
-    borderColor: '#eee',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
+        shadowOpacity: 0.08,
+        shadowRadius: 6,
       },
       android: {
-        elevation: 3,
+        elevation: 2,
       },
     }),
   },
+  // 选中卡片 - 现代化高亮效果
   selectedCard: {
-    borderColor: '#007AFF',
     borderWidth: 2,
-    backgroundColor: '#f0f8ff',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#007AFF',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
+  // 现代化复选框
   checkboxContainer: {
     position: 'absolute',
-    top: 10,
-    right: 10,
+    top: 12,
+    right: 12,
     zIndex: 1,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.light.checkboxBorder,
+    backgroundColor: Colors.light.checkboxBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  checkboxSelected: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
   },
   cardTitle: {
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
     marginBottom: 8,
-    color: '#333',
+    paddingRight: 30,
   },
   cardContent: {
     fontSize: 14,
-    color: '#666',
     marginBottom: 12,
     lineHeight: 20,
   },
   cardDate: {
     fontSize: 12,
-    color: '#999',
     marginTop: 'auto',
   },
   loadingContainer: {
@@ -388,7 +552,6 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 14,
-    color: '#999',
   },
   emptyContainer: {
     width: '100%',
@@ -396,7 +559,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyText: {
-    color: '#999',
     fontSize: 16,
   },
 });

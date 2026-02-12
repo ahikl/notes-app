@@ -3,7 +3,7 @@ import * as SQLite from 'expo-sqlite';
 
 const DATABASE_NAME = 'notes.db';
 const NOTES_TABLE = 'notes';
-const CURRENT_DB_VERSION = 2; // 数据库版本号，用于迁移管理
+const CURRENT_DB_VERSION = 3; // 数据库版本号，用于迁移管理（v3: 添加 deleted_at 字段）
 
 // --- 状态管理 ---
 let db: SQLite.SQLiteDatabase | null = null;
@@ -13,11 +13,11 @@ let isInsideQueueFlow = false; // 重入锁：防止嵌套调用死锁
 const operationQueue: (() => Promise<any>)[] = [];
 
 /**
- * 数据库迁移：添加 iv 和 auth_tag 字段
+ * 数据库迁移：添加 iv、auth_tag 和 deleted_at 字段
  */
 const migrateDatabase = async (instance: SQLite.SQLiteDatabase): Promise<void> => {
   try {
-    // 检查是否需要添加 iv 字段
+    // 检查是否需要添加字段
     const tableInfo = await instance.getAllAsync<{ name: string }>(
       `PRAGMA table_info(${NOTES_TABLE})`,
     );
@@ -36,7 +36,13 @@ const migrateDatabase = async (instance: SQLite.SQLiteDatabase): Promise<void> =
       console.log('数据库迁移：添加 auth_tag 字段');
     }
 
-    console.log('数据库迁移完成');
+    // 添加 deleted_at 字段（如果不存在）- 用于软删除保留期管理
+    if (!columns.includes('deleted_at')) {
+      await instance.execAsync(`ALTER TABLE ${NOTES_TABLE} ADD COLUMN deleted_at TEXT;`);
+      console.log('数据库迁移：添加 deleted_at 字段');
+    }
+
+    console.log(`数据库迁移完成，当前版本: ${CURRENT_DB_VERSION}`);
   } catch (error) {
     console.error('数据库迁移失败:', error);
     throw error;
@@ -63,7 +69,7 @@ const getDb = async (): Promise<SQLite.SQLiteDatabase> => {
   initializing = true;
   try {
     const instance = await SQLite.openDatabaseAsync(DATABASE_NAME);
-    // 确保表结构存在（包含 iv 和 auth_tag 字段）
+    // 确保表结构存在（包含 iv、auth_tag 和 deleted_at 字段）
     await instance.execAsync(`
       CREATE TABLE IF NOT EXISTS ${NOTES_TABLE} (
         id TEXT PRIMARY KEY NOT NULL,
@@ -74,6 +80,7 @@ const getDb = async (): Promise<SQLite.SQLiteDatabase> => {
         is_encrypted INTEGER DEFAULT 0,
         sync_status INTEGER DEFAULT 0,
         is_deleted INTEGER DEFAULT 0,
+        deleted_at TEXT,            -- 软删除时间戳（用于保留期管理）
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -98,7 +105,7 @@ const getDb = async (): Promise<SQLite.SQLiteDatabase> => {
  * 解决高频调用带来的并发冲突和死锁
  */
 const executeDbOperation = async <T>(
-  operation: (dbInstance: SQLite.SQLiteDatabase) => Promise<T>,
+  operation: (_dbInstance: SQLite.SQLiteDatabase) => Promise<T>,
 ): Promise<T> => {
   // 如果已经在队列执行流中（嵌套调用），直接执行，不再入队排队
   if (isInsideQueueFlow) {
@@ -212,8 +219,8 @@ export const batchOperationNotes = async (
         const now = new Date().toISOString();
         const placeholders = deleteIds.map(() => '?').join(',');
         await dbInstance.runAsync(
-          `UPDATE ${NOTES_TABLE} SET is_deleted = 1, sync_status = 1, updated_at = ? WHERE id IN (${placeholders})`,
-          [now, ...deleteIds],
+          `UPDATE ${NOTES_TABLE} SET is_deleted = 1, sync_status = 1, deleted_at = ?, updated_at = ? WHERE id IN (${placeholders})`,
+          [now, now, ...deleteIds],
         );
       }
 
@@ -523,8 +530,8 @@ export const deleteNote = async (id: string): Promise<void> => {
   return executeDbOperation(async (db) => {
     const now = new Date().toISOString();
     await db.runAsync(
-      `UPDATE ${NOTES_TABLE} SET is_deleted = 1, sync_status = 1, updated_at = ? WHERE id = ?`,
-      [now, id],
+      `UPDATE ${NOTES_TABLE} SET is_deleted = 1, sync_status = 1, deleted_at = ?, updated_at = ? WHERE id = ?`,
+      [now, now, id],
     );
     console.log('笔记软删除成功:', id);
   });
@@ -547,8 +554,8 @@ export const batchDeleteNotes = async (ids: string[]): Promise<void> => {
     const now = new Date().toISOString();
     const placeholders = ids.map(() => '?').join(',');
     await db.runAsync(
-      `UPDATE ${NOTES_TABLE} SET is_deleted = 1, sync_status = 1, updated_at = ? WHERE id IN (${placeholders})`,
-      [now, ...ids],
+      `UPDATE ${NOTES_TABLE} SET is_deleted = 1, sync_status = 1, deleted_at = ?, updated_at = ? WHERE id IN (${placeholders})`,
+      [now, now, ...ids],
     );
 
     console.log(`批量删除笔记成功: ${ids.length} 条`);
@@ -672,6 +679,29 @@ export const updateSyncStatus = async (id: string, syncStatus: number): Promise<
   });
 };
 
+/**
+ * 获取超过保留期的已同步软删除笔记
+ * @param retentionDays 保留天数，默认30天
+ */
+export const getExpiredDeletedNotes = async (retentionDays: number = 30): Promise<Note[]> => {
+  return executeDbOperation(async (db) => {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+    const cutoffDateStr = cutoffDate.toISOString();
+
+    return await db.getAllAsync<Note>(
+      `SELECT *
+       FROM ${NOTES_TABLE}
+       WHERE is_deleted = 1
+         AND sync_status = 0
+         AND deleted_at IS NOT NULL
+         AND deleted_at <= ?
+       ORDER BY deleted_at ASC`,
+      [cutoffDateStr],
+    );
+  });
+};
+
 export const purgeDeletedNotes = async (): Promise<void> => {
   return executeDbOperation(async (db) => {
     await db.runAsync(`DELETE FROM ${NOTES_TABLE} WHERE is_deleted = 1`);
@@ -733,6 +763,7 @@ export default {
   searchNotes,
   getNotesCount,
   updateSyncStatus,
+  getExpiredDeletedNotes,
   purgeDeletedNotes,
   exportAllNotes,
   clearAllNotes,

@@ -8,6 +8,7 @@ export interface Note {
   is_encrypted: number;
   sync_status: number;
   is_deleted: number;
+  deleted_at?: string; // 软删除时间戳（用于保留期管理）
   created_at: string;
   updated_at: string;
 }

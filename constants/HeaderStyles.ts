@@ -1,6 +1,10 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StatusBar, StyleSheet } from 'react-native';
+
+// 获取状态栏高度（iOS 通常为 44-47，Android 通常为 24-32）
+const STATUS_BAR_HEIGHT = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 24;
 
 // 全局统一的 header 样式配置
+// 注意：背景色和边框颜色现在通过 Colors 配置动态设置
 export const HeaderStyles = StyleSheet.create({
   // 标准 header 容器样式
   standardHeader: {
@@ -12,12 +16,10 @@ export const HeaderStyles = StyleSheet.create({
     justifyContent: 'space-between',
     // 水平方向内边距为20
     paddingHorizontal: 20,
-    // 顶部内边距为20
-    paddingTop: 20,
+    // 顶部内边距为状态栏高度 + 10，确保内容在状态栏下方
+    paddingTop: STATUS_BAR_HEIGHT + 10,
     // 底部内边距为15
     paddingBottom: 15,
-    // 背景色为白色
-    backgroundColor: '#fff',
   },
 
   // 带边框的 header 容器样式
@@ -30,16 +32,12 @@ export const HeaderStyles = StyleSheet.create({
     justifyContent: 'space-between',
     // 水平方向内边距为20
     paddingHorizontal: 20,
-    // 顶部内边距为20
-    paddingTop: 20,
+    // 顶部内边距为状态栏高度 + 10，确保内容在状态栏下方
+    paddingTop: STATUS_BAR_HEIGHT + 10,
     // 底部内边距为15
     paddingBottom: 15,
-    // 背景色为白色
-    backgroundColor: '#FFF',
     // 底部边框宽度为1
     borderBottomWidth: 1,
-    // 底部边框颜色为浅灰色
-    borderBottomColor: '#F0F0F0',
   },
 
   // 简化 header 容器样式
@@ -50,16 +48,12 @@ export const HeaderStyles = StyleSheet.create({
     alignItems: 'center',
     // 水平方向内边距为20
     paddingHorizontal: 20,
-    // 顶部内边距为20
-    paddingTop: 20,
+    // 顶部内边距为状态栏高度 + 10，确保内容在状态栏下方
+    paddingTop: STATUS_BAR_HEIGHT + 10,
     // 底部内边距为15
     paddingBottom: 15,
     // 底部边框宽度为1
     borderBottomWidth: 1,
-    // 底部边框颜色为中灰色
-    borderBottomColor: '#e0e0e0',
-    // 背景色为白色
-    backgroundColor: '#fff',
   },
 
   // 按钮样式

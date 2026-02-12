@@ -1,15 +1,20 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider as NavigationThemeProvider,
+} from '@react-navigation/native';
 import { Buffer } from 'buffer';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import 'react-native-get-random-values';
 import 'react-native-reanimated';
 
 import { NotificationProvider } from '@/components/NotificationManager';
-import { useColorScheme } from '@/components/useColorScheme';
+import { ThemeProvider, useActualColorScheme } from '@/components/ThemeManager';
 import { initLocalStorage } from '@/services';
 import AppInitializationService from '@/services/AppInitializationService';
 
@@ -70,14 +75,19 @@ export default function RootLayout() {
     return null;
   }
 
-  return <RootLayoutNav />;
+  return (
+    <ThemeProvider>
+      <RootLayoutNav />
+    </ThemeProvider>
+  );
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  const effectiveTheme = useActualColorScheme();
+  const isDark = effectiveTheme === 'dark';
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <NavigationThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
       <NotificationProvider>
         <Stack>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -86,7 +96,9 @@ function RootLayoutNav() {
           <Stack.Screen name="server-settings" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack>
+        {/* 状态栏样式：浅色模式使用深色文字，深色模式使用浅色文字 */}
+        <StatusBar style={isDark ? 'light' : 'dark'} />
       </NotificationProvider>
-    </ThemeProvider>
+    </NavigationThemeProvider>
   );
 }

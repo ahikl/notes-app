@@ -1,5 +1,7 @@
 import NoteListWithSelection from '@/components/NoteListWithSelection';
 import { useNotification } from '@/components/NotificationManager';
+import { useActualColorScheme } from '@/components/ThemeManager';
+import Colors from '@/constants/Colors';
 import { synchronizeNotes } from '@/services';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -10,8 +12,9 @@ export default function IndexScreen() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const noteListRef = useRef<{ refresh: () => void }>(null);
+  const theme = useActualColorScheme();
 
-  const { showInfo, showSuccess, showError } = useNotification();
+  const { showSuccess, showError } = useNotification();
 
   const handleSync = async () => {
     try {
@@ -33,18 +36,25 @@ export default function IndexScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.searchContainerFixed}>
-        <Ionicons name="search" size={20} color="#888" style={styles.searchIcon} />
+    <View style={[styles.container, { backgroundColor: Colors[theme].background }]}>
+      <View
+        style={[styles.searchContainerFixed, { backgroundColor: Colors[theme].searchBackground }]}
+      >
+        <Ionicons
+          name="search"
+          size={20}
+          color={Colors[theme].placeholder}
+          style={styles.searchIcon}
+        />
         <TextInput
           placeholder="搜索笔记..."
-          style={styles.searchInput}
-          placeholderTextColor="#888"
+          style={[styles.searchInput, { color: Colors[theme].searchText }]}
+          placeholderTextColor={Colors[theme].placeholder}
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
         <TouchableOpacity onPress={handleSync} style={styles.syncButton}>
-          <Ionicons name="sync" size={20} color="#888" />
+          <Ionicons name="sync" size={20} color={Colors[theme].placeholder} />
         </TouchableOpacity>
       </View>
 
@@ -75,7 +85,6 @@ export default function IndexScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   contentWrapper: {
     flex: 1,
@@ -84,7 +93,6 @@ const styles = StyleSheet.create({
   searchContainerFixed: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
     height: 45,
     marginHorizontal: 20,
     marginTop: 15,
@@ -99,7 +107,6 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: '#333',
     paddingVertical: 0,
   },
   syncButton: {
