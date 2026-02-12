@@ -110,7 +110,11 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    paddingVertical: 0,
+    height: 45,
+    textAlignVertical: 'center',
+    paddingTop: 0,
+    paddingBottom: 0,
+    includeFontPadding: false,
   },
   syncButton: {
     marginLeft: 10,
