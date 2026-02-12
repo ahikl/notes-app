@@ -482,11 +482,15 @@ const styles = StyleSheet.create({
   titleInput: {
     fontSize: 24,
     fontWeight: 'bold',
-    padding: 0,
+    height: 40,
+    textAlignVertical: 'center',
+    paddingTop: 0,
+    paddingBottom: 0,
     marginVertical: 10,
     borderWidth: 0,
     outlineWidth: 0,
     borderStyle: 'solid',
+    includeFontPadding: false,
   },
   buttonContainer: {
     alignItems: 'center',
@@ -511,11 +515,15 @@ const styles = StyleSheet.create({
   contentInput: {
     flex: 1,
     fontSize: 16,
-    padding: 0,
-    textAlignVertical: 'top',
+    minHeight: 200,
+    textAlignVertical: 'center',
+    paddingTop: 0,
+    paddingBottom: 0,
+    paddingHorizontal: 0,
     borderWidth: 0,
     outlineWidth: 0,
     borderStyle: 'solid',
+    includeFontPadding: false,
   },
   // 悬浮窗样式
   modalOverlay: {
