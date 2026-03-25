@@ -14,6 +14,8 @@ import {
   saveEncryptionKey,
 } from '@/utils/auth/AuthUtils';
 import { generateEncryptionKey } from '@/utils/crypto/EncryptionUtils';
+import { EncryptedNoteService } from '@/services/crypto/EncryptedNoteService';
+import { TransparentCryptoService } from '@/services/crypto/TransparentCryptoService';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -174,8 +176,15 @@ export default function ServerSettingsScreen() {
       // 保存配置到存储
       await saveApiUrl(apiUrl);
       await saveApiKey(apiKey);
-      await saveEncryptionKey(password); // 保存加密密钥
+      await saveEncryptionKey(password); // 保存加密密钥到 AuthUtils
       await saveDefaultEncryption(defaultEncryption); // 保存默认加密设置
+
+      // 更新加密服务的密钥
+      if (password) {
+        await EncryptedNoteService.updateEncryptionKey(password);
+        // 重新初始化透明加密服务，使其使用新密钥
+        await TransparentCryptoService.reinitialize();
+      }
 
       // 实际保存成功，直接跳转回上一页
       setIsSaving(false);

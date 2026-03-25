@@ -10,8 +10,8 @@ import { useRouter } from 'expo-router';
 import React, { forwardRef, useCallback, useImperativeHandle, useState } from 'react';
 import {
   Dimensions,
+  FlatList,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -50,6 +50,97 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
     const [isLoading, setIsLoading] = useState(false);
     const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
 
+    // FlatList renderItem - 使用 useCallback 优化性能
+    // @ts-ignore
+    const renderNoteCard = useCallback(
+      ({ item }: { item: Note }) => {
+        const isSelected = selectedNotes[item.id];
+
+        return (
+          <TouchableOpacity
+            style={[
+              styles.card,
+              {
+                backgroundColor: Colors[theme].cardBackground,
+                borderColor: Colors[theme].cardBorder,
+              },
+              isSelected && {
+                borderColor: Colors[theme].primary,
+                backgroundColor: Colors[theme].selectedCardBackground,
+              },
+            ]}
+            onPress={() => {
+              if (isSelectionMode) {
+                toggleNoteSelection(item.id);
+              } else {
+                router.push({
+                  pathname: '/edit',
+                  params: { id: item.id, title: item.title, content: item.content },
+                });
+              }
+            }}
+            onLongPress={() => {
+              if (!isSelectionMode) {
+                toggleSelectionMode();
+                toggleNoteSelection(item.id);
+              }
+            }}
+          >
+            {/* 选择复选框 */}
+            {isSelectionMode && (
+              <View style={styles.checkboxContainer}>
+                <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                  {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+                </View>
+              </View>
+            )}
+            <Text style={[styles.cardTitle, { color: Colors[theme].text }]} numberOfLines={1}>
+              {truncateText(item.title, 10)}
+            </Text>
+            <Text
+              style={[styles.cardContent, { color: Colors[theme].secondaryText }]}
+              numberOfLines={2}
+            >
+              {truncateText(item.content, 30)}
+            </Text>
+            <Text style={[styles.cardDate, { color: Colors[theme].tertiaryText }]}>
+              {new Date(item.updated_at).toLocaleDateString()}
+            </Text>
+          </TouchableOpacity>
+        );
+      },
+      [selectedNotes, theme, isSelectionMode, router],
+    );
+
+    // FlatList keyExtractor
+    const keyExtractor = useCallback((item: Note) => item.id, []);
+
+    // FlatList ListEmptyComponent
+    const ListEmptyComponent = useCallback(() => {
+      if (!isLoading) {
+        return (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>暂无笔记</Text>
+          </View>
+        );
+      }
+      return null;
+    }, [isLoading]);
+
+    // FlatList ListFooterComponent (loading state)
+    const ListFooterComponent = useCallback(() => {
+      if (isLoading) {
+        return (
+          <View style={styles.loadingContainer}>
+            <Text style={[styles.loadingText, { color: Colors[theme].tertiaryText }]}>
+              加载中...
+            </Text>
+          </View>
+        );
+      }
+      return null;
+    }, [isLoading, theme]);
+
     // 加载笔记
     const loadNotes = useCallback(async () => {
       try {
@@ -57,7 +148,7 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
         const result = await getNotes({
           search: searchQuery,
           page: 1,
-          limit: 50, // 增加限制以支持批量操作
+          limit: 50,
         });
         setNotes(result.data);
       } catch (error) {
@@ -87,10 +178,8 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
     // 全选/取消全选
     const toggleSelectAll = () => {
       if (Object.keys(selectedNotes).length === notes.length) {
-        // 全部已选中，取消选择
         setSelectedNotes({});
       } else {
-        // 部分或未选中，全选
         const newSelected: Record<string, boolean> = {};
         notes.forEach((note) => {
           newSelected[note.id] = true;
@@ -119,27 +208,20 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
         return;
       }
 
-      // 立即关闭弹窗并退出选择模式，提升用户体验
       setShowBatchDeleteModal(false);
       setSelectedNotes({});
       setIsSelectionMode(false);
 
-      // 先从本地状态中移除已删除的笔记，实现即时UI反馈
       setNotes((prevNotes) => prevNotes.filter((note) => !selectedIds.includes(note.id)));
 
-      // 在后台异步执行批量删除操作
       batchDeleteNotes(selectedIds)
         .then(() => {
           console.log(`批量删除成功: ${selectedIds.length} 条笔记`);
           showSuccess(`成功删除 ${selectedIds.length} 条笔记`);
-          // 删除成功后重新加载笔记列表以确保数据一致性
           void loadNotes();
         })
         .catch((error) => {
           console.error('批量删除失败:', error);
-          // 异步删除失败不显示错误弹窗，仅记录日志
-          // 删除状态已保存在本地，下次同步时会重试
-          // 发生错误时重新加载列表以恢复正确状态
           void loadNotes();
         });
     };
@@ -160,15 +242,13 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
         };
 
         void fetchData();
-
-        // 返回一个清理函数，通常在组件失去焦点时不需要特殊处理
         return () => {};
       }, [loadNotes]),
     );
 
     return (
       <View style={[styles.container, { backgroundColor: Colors[theme].background }]}>
-        {/* 选择模式工具栏 - 现代化设计 */}
+        {/* 选择模式工具栏 */}
         {isSelectionMode && (
           <View
             style={[
@@ -245,84 +325,21 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
           </View>
         )}
 
-        {/* 笔记网格 */}
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-          <View style={styles.gridContainer}>
-            {notes.map((note) => {
-              const isSelected = selectedNotes[note.id];
-
-              return (
-                <TouchableOpacity
-                  key={note.id}
-                  style={[
-                    styles.card,
-                    {
-                      backgroundColor: Colors[theme].cardBackground,
-                      borderColor: Colors[theme].cardBorder,
-                    },
-                    isSelected && {
-                      borderColor: Colors[theme].primary,
-                      backgroundColor: Colors[theme].selectedCardBackground,
-                    },
-                  ]}
-                  onPress={() => {
-                    if (isSelectionMode) {
-                      toggleNoteSelection(note.id);
-                    } else {
-                      router.push({
-                        pathname: '/edit',
-                        params: { id: note.id, title: note.title, content: note.content },
-                      });
-                    }
-                  }}
-                  onLongPress={() => {
-                    if (!isSelectionMode) {
-                      toggleSelectionMode();
-                      toggleNoteSelection(note.id);
-                    }
-                  }}
-                >
-                  {/* 选择复选框 - 现代化设计 */}
-                  {isSelectionMode && (
-                    <View style={styles.checkboxContainer}>
-                      <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-                        {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
-                      </View>
-                    </View>
-                  )}
-
-                  <Text style={[styles.cardTitle, { color: Colors[theme].text }]} numberOfLines={1}>
-                    {truncateText(note.title, 10)}
-                  </Text>
-                  <Text
-                    style={[styles.cardContent, { color: Colors[theme].secondaryText }]}
-                    numberOfLines={2}
-                  >
-                    {truncateText(note.content, 30)}
-                  </Text>
-                  <Text style={[styles.cardDate, { color: Colors[theme].tertiaryText }]}>
-                    {new Date(note.updated_at).toLocaleDateString()}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-
-            {/* 空状态 */}
-            {!isLoading && notes.length === 0 && (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>暂无笔记</Text>
-              </View>
-            )}
-          </View>
-
-          {isLoading && (
-            <View style={styles.loadingContainer}>
-              <Text style={[styles.loadingText, { color: Colors[theme].tertiaryText }]}>
-                加载中...
-              </Text>
-            </View>
-          )}
-        </ScrollView>
+        {/* 笔记网格 - 使用 FlatList 实现虚拟化 */}
+        <FlatList
+          data={notes}
+          renderItem={renderNoteCard}
+          keyExtractor={keyExtractor}
+          numColumns={2}
+          contentContainerStyle={styles.gridContainer}
+          ListEmptyComponent={ListEmptyComponent}
+          ListFooterComponent={ListFooterComponent}
+          removeClippedSubviews={true}
+          windowSize={5}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          style={styles.flatList}
+        />
 
         {/* 批量删除确认模态框 */}
         <DeleteConfirmationModal
@@ -382,7 +399,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     flex: 1,
   },
-  // 全选按钮 - 现代化设计
+  // 全选按钮
   selectAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -401,7 +418,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  // 已选择计数 - 现代化设计
   selectedCountText: {
     fontSize: 15,
     fontWeight: '500',
@@ -410,7 +426,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  // 批量删除按钮 - 现代化设计
   batchDeleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -431,10 +446,6 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  batchDeleteButtonDisabled: {
-    shadowOpacity: 0,
-    elevation: 0,
-  },
   deleteIcon: {
     marginRight: 6,
   },
@@ -443,7 +454,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  // 完成按钮
   doneButton: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -454,11 +464,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#007AFF',
   },
-  scrollView: {
+  flatList: {
     flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 80,
   },
   gridContainer: {
     flexDirection: 'row',
@@ -483,7 +490,6 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  // 选中卡片 - 现代化高亮效果
   selectedCard: {
     borderWidth: 2,
     ...Platform.select({
@@ -498,7 +504,6 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  // 现代化复选框
   checkboxContainer: {
     position: 'absolute',
     top: 12,

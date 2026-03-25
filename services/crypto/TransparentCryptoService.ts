@@ -72,6 +72,25 @@ export class TransparentCryptoService {
   }
 
   /**
+   * 重新初始化加密服务
+   * 用于密钥更新后重新加载密钥
+   */
+  static async reinitialize(): Promise<void> {
+    try {
+      // 清除当前密钥
+      this.encryptionKey = null;
+      // 重新加载密钥（会从 AuthUtils 获取最新密钥）
+      await this.initialize();
+    } catch (error) {
+      throw new TransparentCryptoServiceError(
+        '重新初始化透明加密服务失败',
+        'REINIT_FAILED',
+        error as Error,
+      );
+    }
+  }
+
+  /**
    * 检查服务是否已初始化
    */
   static isInitialized(): boolean {

@@ -1,5 +1,9 @@
 import { Note, SyncNote, SyncNotesRequest, SyncNotesResponse } from '@/types/notes/NoteTypes';
-import { databaseNotesToSyncNotes, processSyncUpdatesToNotes } from '@/utils/sync/SyncDataUtils';
+import {
+  databaseNotesToSyncNotes,
+  processSyncUpdatesToNotes,
+  syncNoteToNote,
+} from '@/utils/sync/SyncDataUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { YjsNoteService } from '../crdt/YjsNoteService';
 import { TransparentCryptoService } from '../crypto/TransparentCryptoService';
@@ -224,7 +228,7 @@ const executeAggregatedSync = async (): Promise<SyncNotesResponse> => {
             id: note.id,
             data: {
               sync_status: 0,
-            } as any,
+            },
           }));
           await DatabaseService.batchOperationNotes([], updateData, []);
           console.log(`[SyncService] 已更新 ${notesToUpdateSyncStatus.length} 条笔记的同步状态`);
@@ -383,7 +387,9 @@ const executeAggregatedSync = async (): Promise<SyncNotesResponse> => {
         if (mergedNote) {
           return mergedNote;
         }
-        return processServerUpdates([serverNote as any])[0];
+        // 将 SyncNote 转换为 Note 类型后再处理
+        const note = syncNoteToNote(serverNote, 0, serverNote.is_deleted || 0);
+        return processServerUpdates([note])[0];
       });
     } else {
       // 没有冲突，正常处理服务器更新

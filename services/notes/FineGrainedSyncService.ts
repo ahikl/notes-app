@@ -256,7 +256,7 @@ export const uploadPendingNotes = async (): Promise<{
         id: note.id,
         data: {
           sync_status: 0,
-        } as any,
+        },
       }));
       await DatabaseService.batchOperationNotes([], updateData, []);
       console.log(

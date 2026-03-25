@@ -2,33 +2,8 @@ import { EncryptedData, EncryptionKey, EncryptionOptions } from '@/types/crypto/
 import { Buffer } from 'buffer';
 import 'react-native-get-random-values';
 import crypto from 'react-native-quick-crypto';
-
-/**
- * 加密错误类型
- */
-export class CryptoError extends Error {
-  constructor(
-    message: string,
-    public readonly code: CryptoErrorCode,
-    public readonly originalError?: Error,
-  ) {
-    super(message);
-    this.name = 'CryptoError';
-  }
-}
-
-/**
- * 加密错误代码
- */
-export enum CryptoErrorCode {
-  INVALID_KEY = 'INVALID_KEY',
-  INVALID_DATA = 'INVALID_DATA',
-  INVALID_ALGORITHM = 'INVALID_ALGORITHM',
-  ENCRYPTION_FAILED = 'ENCRYPTION_FAILED',
-  DECRYPTION_FAILED = 'DECRYPTION_FAILED',
-  INVALID_ENCRYPTED_FORMAT = 'INVALID_ENCRYPTED_FORMAT',
-  KEY_GENERATION_FAILED = 'KEY_GENERATION_FAILED',
-}
+import { AppError } from '@/utils/errors/AppError';
+import { ErrorCode, ErrorLevel } from '@/utils/errors/ErrorConstants';
 
 /**
  * 支持的加密算法
@@ -84,18 +59,18 @@ export class CryptoService {
    */
   private static validateData(data: string, allowEmpty: boolean = false): void {
     if (data === null || data === undefined) {
-      throw new CryptoError('数据不能为null或undefined', CryptoErrorCode.INVALID_DATA);
+      throw new AppError('数据不能为null或undefined', ErrorCode.VALIDATION_FAILED);
     }
     if (typeof data !== 'string') {
-      throw new CryptoError('数据必须是字符串类型', CryptoErrorCode.INVALID_DATA);
+      throw new AppError('数据必须是字符串类型', ErrorCode.VALIDATION_FAILED);
     }
     if (!allowEmpty && data.length === 0) {
-      throw new CryptoError('数据不能为空字符串', CryptoErrorCode.INVALID_DATA);
+      throw new AppError('数据不能为空字符串', ErrorCode.VALIDATION_FAILED);
     }
     if (data.length > MAX_DATA_LENGTH) {
-      throw new CryptoError(
+      throw new AppError(
         `数据长度超过最大限制(${MAX_DATA_LENGTH}字节)`,
-        CryptoErrorCode.INVALID_DATA,
+        ErrorCode.VALIDATION_FAILED,
       );
     }
   }
@@ -107,15 +82,15 @@ export class CryptoService {
    */
   private static validateKey(key: Buffer, algorithm: string = 'aes-256-cbc'): void {
     if (!key || !(key instanceof Buffer)) {
-      throw new CryptoError('密钥必须是有效的Buffer对象', CryptoErrorCode.INVALID_KEY);
+      throw new AppError('密钥必须是有效的Buffer对象', ErrorCode.ENCRYPTION_KEY_INVALID);
     }
     if (key.length === 0) {
-      throw new CryptoError('密钥不能为空', CryptoErrorCode.INVALID_KEY);
+      throw new AppError('密钥不能为空', ErrorCode.ENCRYPTION_KEY_INVALID);
     }
     if (!this.isValidKeyLength(key.length, algorithm)) {
-      throw new CryptoError(
+      throw new AppError(
         `密钥长度${key.length}字节与算法${algorithm}不匹配`,
-        CryptoErrorCode.INVALID_KEY,
+        ErrorCode.ENCRYPTION_KEY_INVALID,
       );
     }
   }
@@ -129,17 +104,18 @@ export class CryptoService {
     try {
       // 验证密钥长度
       if (length !== 16 && length !== 24 && length !== 32) {
-        throw new CryptoError('密钥长度必须是16、24或32字节', CryptoErrorCode.INVALID_KEY);
+        throw new AppError('密钥长度必须是16、24或32字节', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
       // 在原生环境中使用react-native-quick-crypto
       return Buffer.from(crypto.randomBytes(length));
     } catch (error) {
-      if (error instanceof CryptoError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new CryptoError(
+      throw new AppError(
         '生成随机密钥失败',
-        CryptoErrorCode.KEY_GENERATION_FAILED,
+        ErrorCode.KEY_GENERATION_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }
@@ -171,7 +147,7 @@ export class CryptoService {
    */
   static keyToBase64(key: Buffer): string {
     if (!key || !(key instanceof Buffer)) {
-      throw new CryptoError('密钥必须是有效的Buffer对象', CryptoErrorCode.INVALID_KEY);
+      throw new AppError('密钥必须是有效的Buffer对象', ErrorCode.ENCRYPTION_KEY_INVALID);
     }
     return key.toString('base64');
   }
@@ -183,19 +159,24 @@ export class CryptoService {
    */
   static keyFromBase64(keyBase64: string): Buffer {
     if (!keyBase64 || typeof keyBase64 !== 'string') {
-      throw new CryptoError('密钥字符串不能为空', CryptoErrorCode.INVALID_KEY);
+      throw new AppError('密钥字符串不能为空', ErrorCode.ENCRYPTION_KEY_INVALID);
     }
     try {
       const key = Buffer.from(keyBase64, 'base64');
       if (key.length === 0) {
-        throw new CryptoError('无效的base64密钥', CryptoErrorCode.INVALID_KEY);
+        throw new AppError('无效的base64密钥', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
       return key;
     } catch (error) {
-      if (error instanceof CryptoError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new CryptoError('解析base64密钥失败', CryptoErrorCode.INVALID_KEY, error as Error);
+      throw new AppError(
+        '解析base64密钥失败',
+        ErrorCode.ENCRYPTION_KEY_INVALID,
+        ErrorLevel.ERROR,
+        error as Error,
+      );
     }
   }
 
@@ -213,9 +194,9 @@ export class CryptoService {
       this.validateKey(key, algorithm);
 
       if (!this.isValidAlgorithm(algorithm)) {
-        throw new CryptoError(
+        throw new AppError(
           `不支持的加密算法: ${algorithm}。支持的算法: ${SUPPORTED_ALGORITHMS.join(', ')}`,
-          CryptoErrorCode.INVALID_ALGORITHM,
+          ErrorCode.INVALID_ALGORITHM,
         );
       }
 
@@ -232,12 +213,13 @@ export class CryptoService {
       // 返回格式: iv:authTag:encryptedContent
       return `${Buffer.from(iv).toString('base64')}:${authTag.toString('base64')}:${encrypted}`;
     } catch (error) {
-      if (error instanceof CryptoError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new CryptoError(
+      throw new AppError(
         `加密失败: ${(error as Error).message}`,
-        CryptoErrorCode.ENCRYPTION_FAILED,
+        ErrorCode.ENCRYPTION_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }
@@ -254,29 +236,29 @@ export class CryptoService {
     try {
       // 验证输入
       if (!encryptedData || typeof encryptedData !== 'string') {
-        throw new CryptoError('加密数据不能为空', CryptoErrorCode.INVALID_DATA);
+        throw new AppError('加密数据不能为空', ErrorCode.VALIDATION_FAILED);
       }
       this.validateKey(key, algorithm);
 
       if (!this.isValidAlgorithm(algorithm)) {
-        throw new CryptoError(`不支持的加密算法: ${algorithm}`, CryptoErrorCode.INVALID_ALGORITHM);
+        throw new AppError(`不支持的加密算法: ${algorithm}`, ErrorCode.INVALID_ALGORITHM);
       }
 
       // 解析 GCM 格式: iv:authTag:encryptedContent
       const parts = encryptedData.split(':');
       if (parts.length !== 3) {
-        throw new CryptoError(
+        throw new AppError(
           '加密数据格式错误，应为"iv:authTag:encryptedContent"格式',
-          CryptoErrorCode.INVALID_ENCRYPTED_FORMAT,
+          ErrorCode.INVALID_ENCRYPTED_FORMAT,
         );
       }
 
       const [ivBase64, authTagBase64, encryptedContent] = parts;
 
       if (!ivBase64 || !authTagBase64 || !encryptedContent) {
-        throw new CryptoError(
+        throw new AppError(
           '加密数据缺少IV、认证标签或内容部分',
-          CryptoErrorCode.INVALID_ENCRYPTED_FORMAT,
+          ErrorCode.INVALID_ENCRYPTED_FORMAT,
         );
       }
 
@@ -285,18 +267,19 @@ export class CryptoService {
       try {
         iv = Buffer.from(ivBase64, 'base64');
       } catch (error) {
-        throw new CryptoError(
+        throw new AppError(
           'IV格式错误，无法解析base64',
-          CryptoErrorCode.INVALID_ENCRYPTED_FORMAT,
+          ErrorCode.INVALID_ENCRYPTED_FORMAT,
+          ErrorLevel.ERROR,
           error as Error,
         );
       }
 
       // GCM 模式推荐 12 字节 IV
       if (iv.length !== 12) {
-        throw new CryptoError(
+        throw new AppError(
           `IV长度错误: ${iv.length}字节，应为12字节（GCM模式）`,
-          CryptoErrorCode.INVALID_ENCRYPTED_FORMAT,
+          ErrorCode.INVALID_ENCRYPTED_FORMAT,
         );
       }
 
@@ -305,9 +288,10 @@ export class CryptoService {
       try {
         authTag = Buffer.from(authTagBase64, 'base64');
       } catch (error) {
-        throw new CryptoError(
+        throw new AppError(
           '认证标签格式错误，无法解析base64',
-          CryptoErrorCode.INVALID_ENCRYPTED_FORMAT,
+          ErrorCode.INVALID_ENCRYPTED_FORMAT,
+          ErrorLevel.ERROR,
           error as Error,
         );
       }
@@ -324,12 +308,13 @@ export class CryptoService {
 
       return decrypted;
     } catch (error) {
-      if (error instanceof CryptoError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new CryptoError(
+      throw new AppError(
         `解密失败: ${(error as Error).message}。可能是密钥不匹配或数据损坏。`,
-        CryptoErrorCode.DECRYPTION_FAILED,
+        ErrorCode.DECRYPTION_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }
@@ -355,7 +340,7 @@ export class CryptoService {
       const algorithm = options?.algorithm || 'aes-256-cbc';
 
       if (!this.isValidAlgorithm(algorithm)) {
-        throw new CryptoError(`不支持的加密算法: ${algorithm}`, CryptoErrorCode.INVALID_ALGORITHM);
+        throw new AppError(`不支持的加密算法: ${algorithm}`, ErrorCode.INVALID_ALGORITHM);
       }
 
       const iv = crypto.randomFillSync(new Uint8Array(16));
@@ -371,12 +356,13 @@ export class CryptoService {
         timestamp: Date.now(),
       };
     } catch (error) {
-      if (error instanceof CryptoError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new CryptoError(
+      throw new AppError(
         `加密失败: ${(error as Error).message}`,
-        CryptoErrorCode.ENCRYPTION_FAILED,
+        ErrorCode.ENCRYPTION_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }
@@ -392,16 +378,13 @@ export class CryptoService {
     try {
       // 验证输入
       if (!encryptedData || typeof encryptedData !== 'object') {
-        throw new CryptoError('加密数据对象不能为空', CryptoErrorCode.INVALID_DATA);
+        throw new AppError('加密数据对象不能为空', ErrorCode.VALIDATION_FAILED);
       }
       if (!encryptedData.encrypted || typeof encryptedData.encrypted !== 'string') {
-        throw new CryptoError(
-          '加密数据缺少encrypted字段',
-          CryptoErrorCode.INVALID_ENCRYPTED_FORMAT,
-        );
+        throw new AppError('加密数据缺少encrypted字段', ErrorCode.INVALID_ENCRYPTED_FORMAT);
       }
       if (!encryptedData.iv || typeof encryptedData.iv !== 'string') {
-        throw new CryptoError('加密数据缺少iv字段', CryptoErrorCode.INVALID_ENCRYPTED_FORMAT);
+        throw new AppError('加密数据缺少iv字段', ErrorCode.INVALID_ENCRYPTED_FORMAT);
       }
 
       const algorithm = encryptedData.algorithm || 'aes-256-cbc';
@@ -411,17 +394,18 @@ export class CryptoService {
       try {
         iv = Buffer.from(encryptedData.iv, 'base64');
       } catch (error) {
-        throw new CryptoError(
+        throw new AppError(
           'IV格式错误，无法解析base64',
-          CryptoErrorCode.INVALID_ENCRYPTED_FORMAT,
+          ErrorCode.INVALID_ENCRYPTED_FORMAT,
+          ErrorLevel.ERROR,
           error as Error,
         );
       }
 
       if (iv.length !== 16) {
-        throw new CryptoError(
+        throw new AppError(
           `IV长度错误: ${iv.length}字节，应为16字节`,
-          CryptoErrorCode.INVALID_ENCRYPTED_FORMAT,
+          ErrorCode.INVALID_ENCRYPTED_FORMAT,
         );
       }
 
@@ -435,12 +419,13 @@ export class CryptoService {
 
       return decrypted;
     } catch (error) {
-      if (error instanceof CryptoError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new CryptoError(
+      throw new AppError(
         `解密失败: ${(error as Error).message}`,
-        CryptoErrorCode.DECRYPTION_FAILED,
+        ErrorCode.DECRYPTION_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }
@@ -462,11 +447,11 @@ export class CryptoService {
       // 验证输入
       this.validateData(data);
       if (!keyString || typeof keyString !== 'string') {
-        throw new CryptoError('密钥字符串不能为空', CryptoErrorCode.INVALID_KEY);
+        throw new AppError('密钥字符串不能为空', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
 
       if (!this.isValidAlgorithm(algorithm)) {
-        throw new CryptoError(`不支持的加密算法: ${algorithm}`, CryptoErrorCode.INVALID_ALGORITHM);
+        throw new AppError(`不支持的加密算法: ${algorithm}`, ErrorCode.INVALID_ALGORITHM);
       }
 
       const key = Buffer.from(keyString, 'utf8');
@@ -478,12 +463,13 @@ export class CryptoService {
       }
       return this.encrypt(data, key, algorithm);
     } catch (error) {
-      if (error instanceof CryptoError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new CryptoError(
+      throw new AppError(
         `加密失败: ${(error as Error).message}`,
-        CryptoErrorCode.ENCRYPTION_FAILED,
+        ErrorCode.ENCRYPTION_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }
@@ -504,14 +490,14 @@ export class CryptoService {
     try {
       // 验证输入
       if (!encryptedText || typeof encryptedText !== 'string') {
-        throw new CryptoError('加密数据不能为空', CryptoErrorCode.INVALID_DATA);
+        throw new AppError('加密数据不能为空', ErrorCode.VALIDATION_FAILED);
       }
       if (!keyString || typeof keyString !== 'string') {
-        throw new CryptoError('密钥字符串不能为空', CryptoErrorCode.INVALID_KEY);
+        throw new AppError('密钥字符串不能为空', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
 
       if (!this.isValidAlgorithm(algorithm)) {
-        throw new CryptoError(`不支持的加密算法: ${algorithm}`, CryptoErrorCode.INVALID_ALGORITHM);
+        throw new AppError(`不支持的加密算法: ${algorithm}`, ErrorCode.INVALID_ALGORITHM);
       }
 
       const key = Buffer.from(keyString, 'utf8');
@@ -523,12 +509,13 @@ export class CryptoService {
       }
       return this.decrypt(encryptedText, key, algorithm);
     } catch (error) {
-      if (error instanceof CryptoError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new CryptoError(
+      throw new AppError(
         `解密失败: ${(error as Error).message}`,
-        CryptoErrorCode.DECRYPTION_FAILED,
+        ErrorCode.DECRYPTION_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }
@@ -542,17 +529,18 @@ export class CryptoService {
   static generateRandomStringKey(length: number = 32): string {
     try {
       if (length <= 0 || length > 128) {
-        throw new CryptoError('密钥长度必须在1-128之间', CryptoErrorCode.INVALID_KEY);
+        throw new AppError('密钥长度必须在1-128之间', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
       const key = this.generateRandomKey(Math.min(length, 32));
       return key.toString('hex').substring(0, length); // 返回指定长度的十六进制字符串
     } catch (error) {
-      if (error instanceof CryptoError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new CryptoError(
+      throw new AppError(
         '生成随机字符串密钥失败',
-        CryptoErrorCode.KEY_GENERATION_FAILED,
+        ErrorCode.KEY_GENERATION_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }

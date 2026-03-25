@@ -1,4 +1,5 @@
-import { CryptoError, CryptoService } from '@/services/crypto/CryptoService';
+import { AppError } from '@/utils/errors/AppError';
+import { CryptoService } from '@/services/crypto/CryptoService';
 import { EncryptedData, EncryptionKey, EncryptionOptions } from '@/types/crypto/CryptoTypes';
 
 /**
@@ -118,7 +119,7 @@ export const generateEncryptionKey = (length: number = 32): string => {
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`生成密钥失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('生成加密密钥失败', 'KEY_GENERATION_FAILED', error as Error);
@@ -151,7 +152,7 @@ export const generateEncryptionKeyWithMetadata = (
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`生成密钥失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('生成加密密钥失败', 'KEY_GENERATION_FAILED', error as Error);
@@ -182,7 +183,7 @@ export const encryptText = (text: string, keyBase64: string): string => {
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`加密失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('加密文本失败', 'ENCRYPTION_FAILED', error as Error);
@@ -218,7 +219,7 @@ export const encryptTextWithMetadata = (
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`加密失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('加密文本失败', 'ENCRYPTION_FAILED', error as Error);
@@ -255,7 +256,7 @@ export const decryptText = (encryptedText: string, keyBase64: string): string =>
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`解密失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('解密文本失败', 'DECRYPTION_FAILED', error as Error);
@@ -295,7 +296,7 @@ export const decryptTextWithMetadata = (
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`解密失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('解密文本失败', 'DECRYPTION_FAILED', error as Error);
@@ -326,7 +327,7 @@ export const encryptTextWithStringKey = (text: string, keyString: string): strin
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`加密失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('加密文本失败', 'ENCRYPTION_FAILED', error as Error);
@@ -363,7 +364,7 @@ export const decryptTextWithStringKey = (encryptedText: string, keyString: strin
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`解密失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('解密文本失败', 'DECRYPTION_FAILED', error as Error);
@@ -385,7 +386,7 @@ export const generateRandomStringKey = (length: number = 32): string => {
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`生成密钥失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError(

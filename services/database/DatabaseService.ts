@@ -1,5 +1,9 @@
 import { CreateNoteRequest, Note, UpdateNoteRequest } from '@/types/notes/NoteTypes';
+import type { SQLiteBindValue } from 'expo-sqlite';
 import * as SQLite from 'expo-sqlite';
+import { AppError } from '@/utils/errors/AppError';
+import { error, info, logError } from '@/utils/Logger';
+import { ErrorCode } from '@/utils/errors/ErrorConstants';
 
 const DATABASE_NAME = 'notes.db';
 const NOTES_TABLE = 'notes';
@@ -27,25 +31,25 @@ const migrateDatabase = async (instance: SQLite.SQLiteDatabase): Promise<void> =
     // 添加 iv 字段（如果不存在）
     if (!columns.includes('iv')) {
       await instance.execAsync(`ALTER TABLE ${NOTES_TABLE} ADD COLUMN iv TEXT;`);
-      console.log('数据库迁移：添加 iv 字段');
+      info('数据库迁移：添加 iv 字段');
     }
 
     // 添加 auth_tag 字段（如果不存在）
     if (!columns.includes('auth_tag')) {
       await instance.execAsync(`ALTER TABLE ${NOTES_TABLE} ADD COLUMN auth_tag TEXT;`);
-      console.log('数据库迁移：添加 auth_tag 字段');
+      info('数据库迁移：添加 auth_tag 字段');
     }
 
     // 添加 deleted_at 字段（如果不存在）- 用于软删除保留期管理
     if (!columns.includes('deleted_at')) {
       await instance.execAsync(`ALTER TABLE ${NOTES_TABLE} ADD COLUMN deleted_at TEXT;`);
-      console.log('数据库迁移：添加 deleted_at 字段');
+      info('数据库迁移：添加 deleted_at 字段');
     }
 
     console.log(`数据库迁移完成，当前版本: ${CURRENT_DB_VERSION}`);
-  } catch (error) {
-    console.error('数据库迁移失败:', error);
-    throw error;
+  } catch (err) {
+    error('数据库迁移失败', err);
+    throw err;
   }
 };
 
@@ -90,11 +94,11 @@ const getDb = async (): Promise<SQLite.SQLiteDatabase> => {
     await migrateDatabase(instance);
 
     db = instance;
-    console.log('数据库连接成功');
+    info('数据库连接成功');
     return db;
-  } catch (error) {
-    console.error('数据库初始化失败:', error);
-    throw error;
+  } catch (err) {
+    error('数据库初始化失败', err);
+    throw err;
   } finally {
     initializing = false;
   }
@@ -120,11 +124,11 @@ const executeDbOperation = async <T>(
         const dbInstance = await getDb(); // 每次操作前动态获取，解决空指针
         const result = await operation(dbInstance);
         resolve(result);
-      } catch (error) {
+      } catch (err) {
         // 针对特定 SQLite 错误重置实例
         if (
-          error instanceof Error &&
-          (error.message.includes('null') || error.message.includes('prepareAsync'))
+          err instanceof Error &&
+          (err.message.includes('null') || err.message.includes('prepareAsync'))
         ) {
           console.warn('检测到数据库连接问题，重置数据库实例');
           try {
@@ -132,11 +136,11 @@ const executeDbOperation = async <T>(
               await db.closeAsync();
             }
           } catch (closeError) {
-            console.error('关闭数据库连接失败:', closeError);
+            error('关闭数据库连接失败', closeError);
           }
           db = null;
         }
-        reject(error);
+        reject(err);
       } finally {
         isInsideQueueFlow = false;
       }
@@ -178,8 +182,8 @@ const internalUpdateSingleNote = async (
     [
       data.title ?? current.title,
       data.content ?? current.content,
-      (data as any).iv ?? (current as any).iv ?? null,
-      (data as any).auth_tag ?? (current as any).auth_tag ?? null,
+      data.iv ?? current.iv ?? null,
+      data.auth_tag ?? current.auth_tag ?? null,
       data.is_encrypted ?? current.is_encrypted,
       data.updated_at || now,
       id,
@@ -194,10 +198,10 @@ const internalUpdateSingleNote = async (
 export const initDatabase = async (): Promise<void> => {
   try {
     await getDb();
-    console.log('数据库连接成功');
-  } catch (error) {
-    console.error('数据库初始化失败:', error);
-    throw error;
+    info('数据库连接成功');
+  } catch (err) {
+    error('数据库初始化失败', err);
+    throw err;
   }
 };
 
@@ -229,28 +233,35 @@ export const batchOperationNotes = async (
         if (await internalUpdateSingleNote(dbInstance, item.id, item.data)) updatedCount++;
       }
 
-      // 第三步：批量创建
+      // 第三步：批量创建 - 使用批量 SQL 优化
       if (createData.length > 0) {
         const now = new Date().toISOString();
+        const insertValues: SQLiteBindValue[] = [];
+        const insertPlaceholders: string[] = [];
+
         for (const note of createData) {
           const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
           createdIds.push(id);
-          const noteAny = note as any;
-          await dbInstance.runAsync(
-            `INSERT INTO ${NOTES_TABLE} (id, title, content, iv, auth_tag, is_encrypted, sync_status, is_deleted, created_at, updated_at) 
-             VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?)`,
-            [
-              id,
-              note.title,
-              note.content,
-              noteAny.iv ?? null,
-              noteAny.auth_tag ?? null,
-              note.is_encrypted ?? 0,
-              note.created_at || now,
-              now,
-            ],
+          const { iv, auth_tag } = note;
+
+          // 收集值和占位符
+          insertValues.push(
+            id,
+            note.title,
+            note.content,
+            iv ?? null,
+            auth_tag ?? null,
+            note.is_encrypted ?? 0,
+            note.created_at || now,
+            now,
           );
+          insertPlaceholders.push('(?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?)');
         }
+
+        // 使用批量 INSERT 语句
+        const placeholders = insertPlaceholders.join(',');
+        const sql = `INSERT INTO ${NOTES_TABLE} (id, title, content, iv, auth_tag, is_encrypted, sync_status, is_deleted, created_at, updated_at) VALUES ${placeholders}`;
+        await dbInstance.runAsync(sql, insertValues);
       }
     });
 
@@ -272,7 +283,7 @@ export const batchOperationNotes = async (
  * - 服务端时间 < 本地时间：保持本地数据
  */
 export const syncWithServer = async (serverNotes: Note[]) => {
-  console.log(`[DatabaseService] syncWithServer 开始，服务端笔记数量: ${serverNotes.length}`);
+  info(`[DatabaseService] syncWithServer 开始，服务端笔记数量: ${serverNotes.length}`);
   console.log(
     `[DatabaseService] 服务端笔记ID列表:`,
     serverNotes.map((n) => n.id),
@@ -344,20 +355,20 @@ export const syncWithServer = async (serverNotes: Note[]) => {
           // 如果本地没有这条笔记且服务端已删除，无需操作
         } else if (!lNote) {
           // 本地没有，服务端有且未删除，拉取到新笔记
-          const sNoteAny = sNote as any;
+          const { iv, auth_tag, is_encrypted } = sNote;
           console.log(`[数据库] 从服务器拉取新笔记 ${sNote.id}:`, {
             is_encrypted: sNote.is_encrypted,
-            has_iv: !!sNoteAny.iv,
-            iv_value: sNoteAny.iv ? sNoteAny.iv.substring(0, 20) + '...' : 'null',
-            has_auth_tag: !!sNoteAny.auth_tag,
-            auth_tag_value: sNoteAny.auth_tag ? sNoteAny.auth_tag.substring(0, 20) + '...' : 'null',
+            has_iv: !!iv,
+            iv_value: iv ? iv.substring(0, 20) + '...' : 'null',
+            has_auth_tag: !!auth_tag,
+            auth_tag_value: auth_tag ? auth_tag.substring(0, 20) + '...' : 'null',
             is_deleted: sNote.is_deleted,
             content_length: sNote.content ? sNote.content.length : 0,
           });
 
           // 确保 iv 和 auth_tag 正确提取
-          const ivValue = sNoteAny.iv || null;
-          const authTagValue = sNoteAny.auth_tag || null;
+          const ivValue = iv || null;
+          const authTagValue = auth_tag || null;
 
           console.log(`[数据库] 准备插入新笔记 ${sNote.id}:`, {
             iv_final: ivValue ? ivValue.substring(0, 20) + '...' : 'null',
@@ -380,7 +391,7 @@ export const syncWithServer = async (serverNotes: Note[]) => {
             );
             console.log('[数据库] 从服务器拉取新笔记到本地成功:', sNote.id);
           } catch (insertError) {
-            console.error(`[数据库] 插入新笔记 ${sNote.id} 失败:`, insertError);
+            error(`[数据库] 插入新笔记 ${sNote.id} 失败`, insertError);
             throw insertError;
           }
         } else {
@@ -405,11 +416,11 @@ export const syncWithServer = async (serverNotes: Note[]) => {
 
           if (serverTime > localTime) {
             // 服务端版本较新，更新本地（使用服务端返回的 is_deleted 值）
-            const sNoteAny = sNote as any;
+            const { iv, auth_tag, is_encrypted } = sNote;
             console.log(`[数据库] 从服务器更新笔记 ${sNote.id}:`, {
               is_encrypted: sNote.is_encrypted,
-              has_iv: !!sNoteAny.iv,
-              has_auth_tag: !!sNoteAny.auth_tag,
+              has_iv: !!sNote.iv,
+              has_auth_tag: !!sNote.auth_tag,
               is_deleted: sNote.is_deleted,
             });
             // 修复：使用服务端返回的 is_deleted 值，而不是强制设置为 0
@@ -418,8 +429,8 @@ export const syncWithServer = async (serverNotes: Note[]) => {
               [
                 sNote.title,
                 sNote.content,
-                sNoteAny.iv ?? null,
-                sNoteAny.auth_tag ?? null,
+                sNote.iv ?? null,
+                sNote.auth_tag ?? null,
                 sNote.is_encrypted ?? 0,
                 sNote.is_deleted ?? 0, // 使用服务端返回的删除状态
                 sNote.updated_at,
@@ -486,15 +497,14 @@ export const createNote = (data: CreateNoteRequest) =>
   executeDbOperation(async (db) => {
     const id = Date.now().toString();
     const now = new Date().toISOString();
-    const dataAny = data as any;
     await db.runAsync(
       `INSERT INTO ${NOTES_TABLE} (id, title, content, iv, auth_tag, is_encrypted, sync_status, is_deleted, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
       [
         id,
         data.title,
         data.content,
-        dataAny.iv ?? null,
-        dataAny.auth_tag ?? null,
+        data.iv ?? null,
+        data.auth_tag ?? null,
         data.is_encrypted ?? 0,
         1,
         0,
@@ -520,7 +530,7 @@ export const updateNote = async (id: string, noteData: UpdateNoteRequest): Promi
   return executeDbOperation(async (db) => {
     const success = await internalUpdateSingleNote(db, id, noteData);
     if (!success) {
-      throw new Error('笔记不存在');
+      throw AppError.note('笔记不存在', ErrorCode.NOTE_NOT_FOUND);
     }
     console.log('笔记更新成功:', id);
   });
@@ -546,8 +556,9 @@ export const batchDeleteNotes = async (ids: string[]): Promise<void> => {
     // 验证所有ID都不为空
     for (let i = 0; i < ids.length; i++) {
       if (!ids[i] || typeof ids[i] !== 'string') {
-        console.error(`无效的ID在位置 ${i}:`, ids[i]);
-        throw new Error(`无效的ID: ${ids[i]}`);
+        const error = AppError.note(`无效的ID在位置 ${i}: ${ids[i]}`, ErrorCode.VALIDATION_FAILED);
+        logError(error, '验证ID失败');
+        throw error;
       }
     }
 
@@ -594,17 +605,17 @@ export const batchCreateNotes = async (notesData: CreateNoteRequest[]): Promise<
       for (const note of notesData) {
         const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
         ids.push(id);
-        const noteAny = note as any;
+        const { iv, auth_tag, is_encrypted } = note;
 
         await db.runAsync(
-          `INSERT INTO ${NOTES_TABLE} (id, title, content, iv, auth_tag, is_encrypted, sync_status, is_deleted, created_at, updated_at) 
+          `INSERT INTO ${NOTES_TABLE} (id, title, content, iv, auth_tag, is_encrypted, sync_status, is_deleted, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?)`,
           [
             id,
             note.title,
             note.content,
-            noteAny.iv ?? null,
-            noteAny.auth_tag ?? null,
+            iv ?? null,
+            auth_tag ?? null,
             note.is_encrypted ?? 0,
             note.created_at || now,
             now,
@@ -738,8 +749,8 @@ export const closeDatabase = async (): Promise<void> => {
       db = null;
       console.log('数据库连接已关闭');
     }
-  } catch (error) {
-    console.error('关闭数据库失败:', error);
+  } catch (err) {
+    error('关闭数据库失败', err);
     db = null;
   }
 };

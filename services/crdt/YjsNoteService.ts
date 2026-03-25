@@ -106,6 +106,7 @@ export class YjsNoteService {
    *
    * @param doc Yjs 文档
    * @param noteId 笔记 ID
+   * @param originalNote
    * @returns 笔记数据
    */
   static extractNoteFromDocument(doc: Y.Doc, noteId: string, originalNote?: Note): Note {
@@ -323,11 +324,7 @@ export class YjsNoteService {
 
     // 如果本地和服务器都有修改（时间差在5秒内认为是并发修改）
     const timeDiff = Math.abs(localTime - serverTime);
-    if (timeDiff < 5000) {
-      return true;
-    }
-
-    return false;
+    return timeDiff < 5000;
   }
 
   /**

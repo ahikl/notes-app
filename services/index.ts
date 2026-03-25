@@ -32,7 +32,7 @@ export {
 export { default as schedulerService } from './scheduler/SchedulerService';
 
 // 加密服务模块
-export { CryptoError, CryptoErrorCode, CryptoService } from './crypto/CryptoService';
+export { CryptoService } from './crypto/CryptoService';
 
 // 加密笔记服务模块
 export {
@@ -78,7 +78,7 @@ export {
 } from '../utils/crypto/EncryptionUtils';
 
 // 密钥存储服务
-export { KeyStorage, KeyStorageError, KeyStorageErrorCode } from '../utils/crypto/KeyStorage';
+export { KeyStorage } from '../utils/crypto/KeyStorage';
 
 // 本地笔记服务
 export {

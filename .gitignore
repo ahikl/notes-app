@@ -56,3 +56,4 @@ local-app-config.json
 *.njsproj
 *.sln
 *.sw?
+/CLAUDE.md

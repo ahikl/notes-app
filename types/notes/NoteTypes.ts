@@ -111,8 +111,10 @@ export interface CreateNoteRequest {
   title: string;
   content: string;
   is_encrypted?: number;
-  created_at: string;
-  updated_at: string;
+  iv?: string; // 初始化向量（Base64编码）
+  auth_tag?: string; // 认证标签（Base64编码）
+  created_at?: string;
+  updated_at?: string;
 }
 
 // 更新笔记请求参数类型
@@ -120,6 +122,9 @@ export interface UpdateNoteRequest {
   title?: string;
   content?: string;
   is_encrypted?: number;
+  iv?: string; // 初始化向量（Base64编码）
+  auth_tag?: string; // 认证标签（Base64编码）
+  sync_status?: number; // 同步状态（本地数据库字段）
   updated_at?: string;
 }
 
