@@ -21,15 +21,9 @@ export default [
     },
     rules: {
       'prettier/prettier': 'error',
-      'no-unused-vars': [
-        'warn',
-        {
-          vars: 'all',
-          varsIgnorePattern: '^_',
-          args: 'after-used',
-          argsIgnorePattern: '^_',
-        },
-      ],
+      // TypeScript 的 no-unused-vars 由 expo 配置处理
+      // 这里只需要关闭基础的 ESLint 规则即可
+      'no-unused-vars': 'off',
     },
     languageOptions: {
       globals: {

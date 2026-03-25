@@ -110,8 +110,3 @@ export type {
 
 // 加密类型定义
 export type { EncryptedData, EncryptionKey } from '../types/crypto/CryptoTypes';
-
-// 主题管理模块
-export { ThemeProvider, useActualColorScheme, useTheme } from '../components/ThemeManager';
-export { getThemePreference, saveThemePreference } from '../utils/theme/ThemeUtils';
-export type { ThemeType } from '../utils/theme/ThemeUtils';

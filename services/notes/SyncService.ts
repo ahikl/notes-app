@@ -9,7 +9,7 @@ import { YjsNoteService } from '../crdt/YjsNoteService';
 import { TransparentCryptoService } from '../crypto/TransparentCryptoService';
 import * as DatabaseService from '../database/DatabaseService';
 import { convertToSyncNotesResponse, executeFineGrainedSync } from './FineGrainedSyncService';
-import { batchUpsertNotes, syncNotes } from './NoteService';
+import { batchUpsertNotes, syncNotes } from '@/services';
 
 const LAST_SYNC_TIMESTAMP_KEY = 'last_sync_timestamp';
 

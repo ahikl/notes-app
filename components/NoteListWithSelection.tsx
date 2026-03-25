@@ -50,8 +50,25 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
     const [isLoading, setIsLoading] = useState(false);
     const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
 
+    // 切换选择模式
+    const toggleSelectionMode = useCallback(() => {
+      setIsSelectionMode((prev) => {
+        if (prev) {
+          setSelectedNotes({});
+        }
+        return !prev;
+      });
+    }, []);
+
+    // 选择/取消选择笔记
+    const toggleNoteSelection = useCallback((id: string) => {
+      setSelectedNotes((prev) => ({
+        ...prev,
+        [id]: !prev[id],
+      }));
+    }, []);
+
     // FlatList renderItem - 使用 useCallback 优化性能
-    // @ts-ignore
     const renderNoteCard = useCallback(
       ({ item }: { item: Note }) => {
         const isSelected = selectedNotes[item.id];
@@ -109,7 +126,7 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
           </TouchableOpacity>
         );
       },
-      [selectedNotes, theme, isSelectionMode, router],
+      [selectedNotes, theme, isSelectionMode, router, toggleSelectionMode, toggleNoteSelection],
     );
 
     // FlatList keyExtractor
@@ -159,24 +176,8 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
       }
     }, [searchQuery, setIsLoading, setNotes, showError]);
 
-    // 切换选择模式
-    const toggleSelectionMode = () => {
-      if (isSelectionMode) {
-        setSelectedNotes({});
-      }
-      setIsSelectionMode(!isSelectionMode);
-    };
-
-    // 选择/取消选择笔记
-    const toggleNoteSelection = (id: string) => {
-      setSelectedNotes((prev) => ({
-        ...prev,
-        [id]: !prev[id],
-      }));
-    };
-
     // 全选/取消全选
-    const toggleSelectAll = () => {
+    const toggleSelectAll = useCallback(() => {
       if (Object.keys(selectedNotes).length === notes.length) {
         setSelectedNotes({});
       } else {
@@ -186,7 +187,7 @@ const NoteListWithSelection = forwardRef<NoteListWithSelectionRef, NoteListWithS
         });
         setSelectedNotes(newSelected);
       }
-    };
+    }, [selectedNotes, notes]);
 
     // 获取已选中的笔记ID数组
     const getSelectedIds = () => {

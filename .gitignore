@@ -57,3 +57,4 @@ local-app-config.json
 *.sln
 *.sw?
 /CLAUDE.md
+/.claude/

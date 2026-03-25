@@ -355,20 +355,18 @@ export const syncWithServer = async (serverNotes: Note[]) => {
           // 如果本地没有这条笔记且服务端已删除，无需操作
         } else if (!lNote) {
           // 本地没有，服务端有且未删除，拉取到新笔记
-          const { iv, auth_tag, is_encrypted } = sNote;
+          const ivValue = sNote.iv ?? null;
+          const authTagValue = sNote.auth_tag ?? null;
+
           console.log(`[数据库] 从服务器拉取新笔记 ${sNote.id}:`, {
             is_encrypted: sNote.is_encrypted,
-            has_iv: !!iv,
-            iv_value: iv ? iv.substring(0, 20) + '...' : 'null',
-            has_auth_tag: !!auth_tag,
-            auth_tag_value: auth_tag ? auth_tag.substring(0, 20) + '...' : 'null',
+            has_iv: !!ivValue,
+            iv_value: ivValue ? ivValue.substring(0, 20) + '...' : 'null',
+            has_auth_tag: !!authTagValue,
+            auth_tag_value: authTagValue ? authTagValue.substring(0, 20) + '...' : 'null',
             is_deleted: sNote.is_deleted,
             content_length: sNote.content ? sNote.content.length : 0,
           });
-
-          // 确保 iv 和 auth_tag 正确提取
-          const ivValue = iv || null;
-          const authTagValue = auth_tag || null;
 
           console.log(`[数据库] 准备插入新笔记 ${sNote.id}:`, {
             iv_final: ivValue ? ivValue.substring(0, 20) + '...' : 'null',
@@ -416,7 +414,6 @@ export const syncWithServer = async (serverNotes: Note[]) => {
 
           if (serverTime > localTime) {
             // 服务端版本较新，更新本地（使用服务端返回的 is_deleted 值）
-            const { iv, auth_tag, is_encrypted } = sNote;
             console.log(`[数据库] 从服务器更新笔记 ${sNote.id}:`, {
               is_encrypted: sNote.is_encrypted,
               has_iv: !!sNote.iv,
@@ -605,7 +602,6 @@ export const batchCreateNotes = async (notesData: CreateNoteRequest[]): Promise<
       for (const note of notesData) {
         const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
         ids.push(id);
-        const { iv, auth_tag, is_encrypted } = note;
 
         await db.runAsync(
           `INSERT INTO ${NOTES_TABLE} (id, title, content, iv, auth_tag, is_encrypted, sync_status, is_deleted, created_at, updated_at)
@@ -614,8 +610,8 @@ export const batchCreateNotes = async (notesData: CreateNoteRequest[]): Promise<
             id,
             note.title,
             note.content,
-            iv ?? null,
-            auth_tag ?? null,
+            note.iv ?? null,
+            note.auth_tag ?? null,
             note.is_encrypted ?? 0,
             note.created_at || now,
             now,

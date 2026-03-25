@@ -1,4 +1,3 @@
-import Colors from '@/constants/Colors';
 import React, { createContext, ReactNode, useContext, useState } from 'react';
 import { Platform, StyleSheet, Text, ToastAndroid, useColorScheme, View } from 'react-native';
 
@@ -28,7 +27,6 @@ interface NotificationProviderProps {
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
   const systemColorScheme = useColorScheme();
   const theme = systemColorScheme === 'dark' ? 'dark' : 'light';
-  const colors = Colors[theme];
 
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
