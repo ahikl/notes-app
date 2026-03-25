@@ -1,5 +1,6 @@
 // Jest 全局类型声明
-import { CryptoError, CryptoService } from '../CryptoService';
+import { AppError } from '@/utils/errors/AppError';
+import { CryptoService } from '@/services';
 
 declare const describe: (name: string, fn: () => void) => void;
 declare const it: (name: string, fn: () => void) => void;
@@ -25,7 +26,7 @@ describe('CryptoService', () => {
     });
 
     it('应该抛出错误当密钥长度无效', () => {
-      expect(() => CryptoService.generateRandomKey(10)).toThrow(CryptoError);
+      expect(() => CryptoService.generateRandomKey(10)).toThrow(AppError);
       expect(() => CryptoService.generateRandomKey(10)).toThrow('密钥长度必须是16、24或32字节');
     });
 
@@ -52,12 +53,12 @@ describe('CryptoService', () => {
     });
 
     it('应该抛出错误当密钥为空', () => {
-      expect(() => CryptoService.keyToBase64(null as any)).toThrow(CryptoError);
+      expect(() => CryptoService.keyToBase64(null as any)).toThrow(AppError);
       expect(() => CryptoService.keyToBase64(null as any)).toThrow('密钥必须是有效的Buffer对象');
     });
 
     it('应该抛出错误当base64字符串为空', () => {
-      expect(() => CryptoService.keyFromBase64('')).toThrow(CryptoError);
+      expect(() => CryptoService.keyFromBase64('')).toThrow(AppError);
       expect(() => CryptoService.keyFromBase64(null as any)).toThrow('密钥字符串不能为空');
     });
   });
@@ -88,22 +89,22 @@ describe('CryptoService', () => {
     });
 
     it('应该抛出错误当数据为空', () => {
-      expect(() => CryptoService.encrypt('', key)).toThrow(CryptoError);
+      expect(() => CryptoService.encrypt('', key)).toThrow(AppError);
       expect(() => CryptoService.encrypt(null as any, key)).toThrow('数据不能为null或undefined');
     });
 
     it('应该抛出错误当密钥为空', () => {
-      expect(() => CryptoService.encrypt('test', null as any)).toThrow(CryptoError);
+      expect(() => CryptoService.encrypt('test', null as any)).toThrow(AppError);
       expect(() => CryptoService.encrypt('test', Buffer.alloc(0))).toThrow('密钥不能为空');
     });
 
     it('应该抛出错误当密钥长度不匹配', () => {
       const shortKey = Buffer.alloc(16);
-      expect(() => CryptoService.encrypt('test', shortKey, 'aes-256-cbc')).toThrow(CryptoError);
+      expect(() => CryptoService.encrypt('test', shortKey, 'aes-256-cbc')).toThrow(AppError);
     });
 
     it('应该抛出错误当加密数据格式无效', () => {
-      expect(() => CryptoService.decrypt('invalid', key)).toThrow(CryptoError);
+      expect(() => CryptoService.decrypt('invalid', key)).toThrow(AppError);
       expect(() => CryptoService.decrypt('invalid', key)).toThrow('加密数据格式错误');
     });
 
@@ -167,7 +168,7 @@ describe('CryptoService', () => {
     });
 
     it('应该抛出错误当加密数据对象无效', () => {
-      expect(() => CryptoService.decryptWithMetadata(null as any, key)).toThrow(CryptoError);
+      expect(() => CryptoService.decryptWithMetadata(null as any, key)).toThrow(AppError);
       expect(() => CryptoService.decryptWithMetadata({} as any, key)).toThrow(
         '加密数据缺少encrypted字段',
       );
@@ -192,7 +193,7 @@ describe('CryptoService', () => {
     });
 
     it('应该抛出错误当密钥为空', () => {
-      expect(() => CryptoService.encryptWithKeyString('test', '')).toThrow(CryptoError);
+      expect(() => CryptoService.encryptWithKeyString('test', '')).toThrow(AppError);
       expect(() => CryptoService.decryptWithKeyString('test', '')).toThrow('密钥字符串不能为空');
     });
   });
@@ -210,7 +211,7 @@ describe('CryptoService', () => {
     });
 
     it('应该抛出错误当长度无效', () => {
-      expect(() => CryptoService.generateRandomStringKey(0)).toThrow(CryptoError);
+      expect(() => CryptoService.generateRandomStringKey(0)).toThrow(AppError);
       expect(() => CryptoService.generateRandomStringKey(200)).toThrow('密钥长度必须在1-128之间');
     });
 

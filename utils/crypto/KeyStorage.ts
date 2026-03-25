@@ -1,32 +1,7 @@
 import { CryptoService } from '@/services/crypto/CryptoService';
 import * as SecureStore from 'expo-secure-store';
-
-/**
- * 密钥存储错误
- */
-export class KeyStorageError extends Error {
-  constructor(
-    message: string,
-    public readonly code: KeyStorageErrorCode,
-    public readonly originalError?: Error,
-  ) {
-    super(message);
-    this.name = 'KeyStorageError';
-  }
-}
-
-/**
- * 密钥存储错误代码
- */
-export enum KeyStorageErrorCode {
-  STORE_FAILED = 'STORE_FAILED',
-  RETRIEVE_FAILED = 'RETRIEVE_FAILED',
-  DELETE_FAILED = 'DELETE_FAILED',
-  INVALID_KEY = 'INVALID_KEY',
-  KEY_NOT_FOUND = 'KEY_NOT_FOUND',
-  BACKUP_FAILED = 'BACKUP_FAILED',
-  RESTORE_FAILED = 'RESTORE_FAILED',
-}
+import { AppError } from '@/utils/errors/AppError';
+import { ErrorCode, ErrorLevel } from '@/utils/errors/ErrorConstants';
 
 /**
  * 密钥元数据
@@ -75,20 +50,20 @@ export class KeyStorage {
     try {
       // 验证输入
       if (!keyId || typeof keyId !== 'string') {
-        throw new KeyStorageError('密钥ID不能为空', KeyStorageErrorCode.INVALID_KEY);
+        throw new AppError('密钥ID不能为空', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
       if (!keyBase64 || typeof keyBase64 !== 'string') {
-        throw new KeyStorageError('密钥不能为空', KeyStorageErrorCode.INVALID_KEY);
+        throw new AppError('密钥不能为空', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
       if (!CryptoService.isValidBase64(keyBase64)) {
-        throw new KeyStorageError('密钥必须是有效的base64编码', KeyStorageErrorCode.INVALID_KEY);
+        throw new AppError('密钥必须是有效的base64编码', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
 
       const keyBuffer = Buffer.from(keyBase64, 'base64');
       if (keyBuffer.length !== 16 && keyBuffer.length !== 24 && keyBuffer.length !== 32) {
-        throw new KeyStorageError(
+        throw new AppError(
           `密钥长度${keyBuffer.length}字节无效，必须是16、24或32字节`,
-          KeyStorageErrorCode.INVALID_KEY,
+          ErrorCode.ENCRYPTION_KEY_INVALID,
         );
       }
 
@@ -103,12 +78,13 @@ export class KeyStorage {
       // 更新元数据索引
       await this.updateMetadataIndex(keyId, metadata);
     } catch (error) {
-      if (error instanceof KeyStorageError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new KeyStorageError(
+      throw new AppError(
         `存储密钥失败: ${(error as Error).message}`,
-        KeyStorageErrorCode.STORE_FAILED,
+        ErrorCode.KEY_STORAGE_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }
@@ -122,21 +98,21 @@ export class KeyStorage {
   static async retrieveKey(keyId: string): Promise<{ key: string; metadata: KeyMetadata }> {
     try {
       if (!keyId || typeof keyId !== 'string') {
-        throw new KeyStorageError('密钥ID不能为空', KeyStorageErrorCode.INVALID_KEY);
+        throw new AppError('密钥ID不能为空', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
 
       const storageKey = `${KEY_STORAGE_PREFIX}${keyId}`;
       const storedJson = await SecureStore.getItemAsync(storageKey);
 
       if (!storedJson) {
-        throw new KeyStorageError(`密钥不存在: ${keyId}`, KeyStorageErrorCode.KEY_NOT_FOUND);
+        throw new AppError(`密钥不存在: ${keyId}`, ErrorCode.KEY_NOT_FOUND);
       }
 
       const storedItem: StoredKeyItem = JSON.parse(storedJson);
 
       // 验证密钥格式
       if (!CryptoService.isValidBase64(storedItem.key)) {
-        throw new KeyStorageError('存储的密钥格式无效', KeyStorageErrorCode.INVALID_KEY);
+        throw new AppError('存储的密钥格式无效', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
 
       return {
@@ -144,12 +120,13 @@ export class KeyStorage {
         metadata: storedItem.metadata,
       };
     } catch (error) {
-      if (error instanceof KeyStorageError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new KeyStorageError(
+      throw new AppError(
         `检索密钥失败: ${(error as Error).message}`,
-        KeyStorageErrorCode.RETRIEVE_FAILED,
+        ErrorCode.KEY_RETRIEVE_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }
@@ -162,7 +139,7 @@ export class KeyStorage {
   static async deleteKey(keyId: string): Promise<void> {
     try {
       if (!keyId || typeof keyId !== 'string') {
-        throw new KeyStorageError('密钥ID不能为空', KeyStorageErrorCode.INVALID_KEY);
+        throw new AppError('密钥ID不能为空', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
 
       const storageKey = `${KEY_STORAGE_PREFIX}${keyId}`;
@@ -171,12 +148,13 @@ export class KeyStorage {
       // 从元数据索引中移除
       await this.removeFromMetadataIndex(keyId);
     } catch (error) {
-      if (error instanceof KeyStorageError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new KeyStorageError(
+      throw new AppError(
         `删除密钥失败: ${(error as Error).message}`,
-        KeyStorageErrorCode.DELETE_FAILED,
+        ErrorCode.KEY_DELETE_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }
@@ -191,7 +169,7 @@ export class KeyStorage {
   static async backupKey(keyId: string, backupId?: string): Promise<string> {
     try {
       if (!keyId || typeof keyId !== 'string') {
-        throw new KeyStorageError('密钥ID不能为空', KeyStorageErrorCode.INVALID_KEY);
+        throw new AppError('密钥ID不能为空', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
 
       const { key, metadata } = await this.retrieveKey(keyId);
@@ -211,12 +189,13 @@ export class KeyStorage {
 
       return backupKeyId;
     } catch (error) {
-      if (error instanceof KeyStorageError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new KeyStorageError(
+      throw new AppError(
         `备份密钥失败: ${(error as Error).message}`,
-        KeyStorageErrorCode.BACKUP_FAILED,
+        ErrorCode.KEY_BACKUP_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }
@@ -230,17 +209,17 @@ export class KeyStorage {
   static async restoreKey(keyId: string, backupId: string): Promise<void> {
     try {
       if (!keyId || typeof keyId !== 'string') {
-        throw new KeyStorageError('密钥ID不能为空', KeyStorageErrorCode.INVALID_KEY);
+        throw new AppError('密钥ID不能为空', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
       if (!backupId || typeof backupId !== 'string') {
-        throw new KeyStorageError('备份ID不能为空', KeyStorageErrorCode.INVALID_KEY);
+        throw new AppError('备份ID不能为空', ErrorCode.ENCRYPTION_KEY_INVALID);
       }
 
       const storageKey = `${KEY_BACKUP_PREFIX}${keyId}_${backupId}`;
       const backupJson = await SecureStore.getItemAsync(storageKey);
 
       if (!backupJson) {
-        throw new KeyStorageError(`备份不存在: ${backupId}`, KeyStorageErrorCode.KEY_NOT_FOUND);
+        throw new AppError(`备份不存在: ${backupId}`, ErrorCode.KEY_NOT_FOUND);
       }
 
       const backupItem: StoredKeyItem = JSON.parse(backupJson);
@@ -248,12 +227,13 @@ export class KeyStorage {
       // 恢复密钥
       await this.storeKey(keyId, backupItem.key, backupItem.metadata);
     } catch (error) {
-      if (error instanceof KeyStorageError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new KeyStorageError(
+      throw new AppError(
         `恢复密钥失败: ${(error as Error).message}`,
-        KeyStorageErrorCode.RESTORE_FAILED,
+        ErrorCode.KEY_RESTORE_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }
@@ -328,12 +308,13 @@ export class KeyStorage {
 
       return { key: keyBase64, metadata };
     } catch (error) {
-      if (error instanceof KeyStorageError) {
+      if (error instanceof AppError) {
         throw error;
       }
-      throw new KeyStorageError(
+      throw new AppError(
         `生成并存储密钥失败: ${(error as Error).message}`,
-        KeyStorageErrorCode.STORE_FAILED,
+        ErrorCode.KEY_STORAGE_FAILED,
+        ErrorLevel.ERROR,
         error as Error,
       );
     }

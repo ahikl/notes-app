@@ -125,7 +125,7 @@ export const createNote = async (data: CreateNoteRequest): Promise<CreateNoteRes
       updated_at: encryptedNote.updated_at,
       ...(encryptedNote.iv && { iv: encryptedNote.iv }),
       ...(encryptedNote.auth_tag && { auth_tag: encryptedNote.auth_tag }),
-    } as any; // 使用 any 类型避免 CreateNoteRequest 类型不包含 iv/auth_tag 的错误
+    };
 
     const id = await DatabaseService.createNote(createData);
     return {
@@ -182,7 +182,7 @@ export const updateNote = async (
       updated_at: encryptedNote.updated_at,
       ...(encryptedNote.iv !== undefined && { iv: encryptedNote.iv }),
       ...(encryptedNote.auth_tag !== undefined && { auth_tag: encryptedNote.auth_tag }),
-    } as any); // 使用 any 类型避免 UpdateNoteRequest 类型不包含 iv/auth_tag 的错误
+    });
 
     return {
       success: true,

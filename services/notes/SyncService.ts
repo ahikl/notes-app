@@ -1,11 +1,15 @@
 import { Note, SyncNote, SyncNotesRequest, SyncNotesResponse } from '@/types/notes/NoteTypes';
-import { databaseNotesToSyncNotes, processSyncUpdatesToNotes } from '@/utils/sync/SyncDataUtils';
+import {
+  databaseNotesToSyncNotes,
+  processSyncUpdatesToNotes,
+  syncNoteToNote,
+} from '@/utils/sync/SyncDataUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { YjsNoteService } from '../crdt/YjsNoteService';
 import { TransparentCryptoService } from '../crypto/TransparentCryptoService';
 import * as DatabaseService from '../database/DatabaseService';
 import { convertToSyncNotesResponse, executeFineGrainedSync } from './FineGrainedSyncService';
-import { batchUpsertNotes, syncNotes } from './NoteService';
+import { batchUpsertNotes, syncNotes } from '@/services';
 
 const LAST_SYNC_TIMESTAMP_KEY = 'last_sync_timestamp';
 
@@ -224,7 +228,7 @@ const executeAggregatedSync = async (): Promise<SyncNotesResponse> => {
             id: note.id,
             data: {
               sync_status: 0,
-            } as any,
+            },
           }));
           await DatabaseService.batchOperationNotes([], updateData, []);
           console.log(`[SyncService] 已更新 ${notesToUpdateSyncStatus.length} 条笔记的同步状态`);
@@ -364,12 +368,12 @@ const executeAggregatedSync = async (): Promise<SyncNotesResponse> => {
         mergedPlainNotes.map(async (note) => {
           if (note.is_encrypted === 1) {
             // 保留原始的删除状态，不要强制设置为 0
-            const encrypted = await TransparentCryptoService.encryptNote({
+
+            return await TransparentCryptoService.encryptNote({
               ...note,
               sync_status: 0,
               is_deleted: note.is_deleted ?? 0,
             });
-            return encrypted;
           }
           return note;
         }),
@@ -383,7 +387,9 @@ const executeAggregatedSync = async (): Promise<SyncNotesResponse> => {
         if (mergedNote) {
           return mergedNote;
         }
-        return processServerUpdates([serverNote as any])[0];
+        // 将 SyncNote 转换为 Note 类型后再处理
+        const note = syncNoteToNote(serverNote, 0, serverNote.is_deleted || 0);
+        return processServerUpdates([note])[0];
       });
     } else {
       // 没有冲突，正常处理服务器更新

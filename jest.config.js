@@ -6,7 +6,7 @@ module.exports = {
     '^.+\\.jsx?$': 'babel-jest',
   },
   transformIgnorePatterns: [
-    'node_modules/(?!((react-native|@react-native|expo|@expo|react-native-quick-crypto|react-native-get-random-values|@react-native-async-storage|yjs|lib0)/.*))',
+    'node_modules/(?!((react-native|@react-native|expo|@expo|expo-sqlite|expo-asset|react-native-quick-crypto|react-native-get-random-values|@react-native-async-storage|yjs|lib0)/.*))',
   ],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',

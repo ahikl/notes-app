@@ -198,38 +198,31 @@ class SchedulerService {
 
   /**
    * 执行清理任务
-   * 清理本地数据库中已被同步的删除标记笔记
+   * 清理本地数据库中超过保留期（默认30天）的已同步软删除笔记
+   * 保留期内即使已同步也不物理删除，以防止网络不稳定导致的数据不一致
    */
   private async performCleanup() {
     try {
       console.log('开始执行清理任务...');
 
-      // 获取所有被标记删除的笔记
-      const deletedNotes = await DatabaseService.getDeletedNotes();
+      // 获取超过保留期（30天）的已同步软删除笔记
+      const RETENTION_DAYS = 30;
+      const expiredNotes = await DatabaseService.getExpiredDeletedNotes(RETENTION_DAYS);
 
-      if (deletedNotes.length === 0) {
-        console.log('没有被标记删除的笔记需要清理');
+      if (expiredNotes.length === 0) {
+        console.log(`没有超过保留期（${RETENTION_DAYS}天）的已同步软删除笔记需要清理`);
         return;
       }
 
-      console.log(`找到 ${deletedNotes.length} 条被标记删除的笔记`);
+      console.log(`发现 ${expiredNotes.length} 条超过保留期的已同步软删除笔记，开始物理删除...`);
 
-      // 过滤出已同步的删除标记笔记 (sync_status === 0 表示已同步)
-      const syncedDeletedNotes = deletedNotes.filter((note) => note.sync_status === 0);
-
-      if (syncedDeletedNotes.length === 0) {
-        console.log('没有已同步的删除标记笔记需要清理');
-        return;
-      }
-
-      console.log(`发现 ${syncedDeletedNotes.length} 条已同步的删除标记笔记，开始物理删除...`);
-
-      // 物理删除已同步的删除标记笔记
-      for (const note of syncedDeletedNotes) {
+      // 物理删除超过保留期的已同步软删除笔记
+      for (const note of expiredNotes) {
         await DatabaseService.permanentlyDeleteNote(note.id);
+        console.log(`已物理删除笔记: ${note.id} (删除时间: ${note.deleted_at})`);
       }
 
-      console.log(`清理完成，共物理删除 ${syncedDeletedNotes.length} 条笔记`);
+      console.log(`清理完成，共物理删除 ${expiredNotes.length} 条笔记`);
     } catch (error) {
       console.error('清理任务执行失败:', error);
     }

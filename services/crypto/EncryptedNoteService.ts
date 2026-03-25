@@ -1,17 +1,18 @@
-import { CryptoError, CryptoService } from '@/services';
+import { AppError } from '@/utils/errors/AppError';
+import { CryptoService } from '@/services';
 import { Note } from '@/types/notes/NoteTypes';
-import { KeyStorage, KeyStorageError } from '@/utils/crypto/KeyStorage';
+import { KeyStorage } from '@/utils/crypto/KeyStorage';
+import {
+  getEncryptionKey as getEncryptionKeyFromAuth,
+  saveEncryptionKey as saveEncryptionKeyToAuth,
+} from '@/utils/auth/AuthUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import localNoteService from '../local/LocalNoteService';
 import noteService from '../notes/NoteService';
 
 // 类型守卫函数
-const isCryptoError = (error: unknown): error is CryptoError => {
-  return error instanceof CryptoError;
-};
-
-const isKeyStorageError = (error: unknown): error is KeyStorageError => {
-  return error instanceof KeyStorageError;
+const isAppError = (error: unknown): error is AppError => {
+  return error instanceof AppError;
 };
 
 /**
@@ -96,29 +97,44 @@ export class EncryptedNoteService {
 
   /**
    * 获取或创建加密密钥
-   * 优先使用 SecureStore，如果不支持则回退到 AsyncStorage
+   * 优先从 AuthUtils 获取（用户在 server-settings 设置的密钥），
+   * 如果没有则使用 KeyStorage/AsyncStorage 中的旧密钥（向后兼容）
    * @returns 加密密钥
    */
   static async getOrCreateEncryptionKey(): Promise<Buffer> {
     try {
+      // 优先从 AuthUtils 获取密钥（用户设置的密钥）
+      const authKey = await getEncryptionKeyFromAuth();
+      if (authKey) {
+        // 验证密钥格式
+        if (CryptoService.isValidBase64(authKey)) {
+          return CryptoService.keyFromBase64(authKey);
+        } else {
+          console.warn('AuthUtils 中的密钥格式无效，回退到其他存储');
+        }
+      }
+
+      // 回退到 KeyStorage（兼容旧数据）
       // 检查 SecureStore 是否可用
       if (this.useSecureStorage) {
         try {
           const isAvailable = await KeyStorage.isAvailable();
           if (isAvailable) {
-            // 尝试从 SecureStore 获取密钥
+            // 尝试从 KeyStorage 获取密钥
             const hasKey = await KeyStorage.hasKey(this.KEY_ID);
             if (hasKey) {
               const { key } = await KeyStorage.retrieveKey(this.KEY_ID);
               return CryptoService.keyFromBase64(key);
             }
 
-            // 生成新密钥并存储到 SecureStore
+            // 生成新密钥并存储到 KeyStorage
             const { key } = await KeyStorage.generateAndStoreKey(this.KEY_ID, 32);
+            // 同时保存到 AuthUtils 以便同步
+            await saveEncryptionKeyToAuth(key);
             return CryptoService.keyFromBase64(key);
           }
         } catch (secureStoreError) {
-          console.warn('SecureStore 不可用，回退到 AsyncStorage:', secureStoreError);
+          console.warn('KeyStorage 不可用，回退到 AsyncStorage:', secureStoreError);
           this.useSecureStorage = false;
         }
       }
@@ -129,17 +145,17 @@ export class EncryptedNoteService {
       if (error instanceof EncryptedNoteServiceError) {
         throw error;
       }
-      if (isCryptoError(error)) {
+      if (isAppError(error)) {
         throw new EncryptedNoteServiceError(
-          `密钥操作失败: ${(error as CryptoError).message}`,
-          (error as CryptoError).code,
+          `密钥操作失败: ${(error as AppError).message}`,
+          (error as AppError).code,
           error as Error,
         );
       }
-      if (isKeyStorageError(error)) {
+      if (isAppError(error)) {
         throw new EncryptedNoteServiceError(
-          `密钥存储操作失败: ${(error as KeyStorageError).message}`,
-          (error as KeyStorageError).code,
+          `密钥存储操作失败: ${(error as AppError).message}`,
+          (error as AppError).code,
           error as Error,
         );
       }
@@ -164,6 +180,11 @@ export class EncryptedNoteService {
       if (!CryptoService.isValidBase64(storedKey)) {
         throw new EncryptedNoteServiceError('存储的密钥格式无效', 'INVALID_STORED_KEY');
       }
+      // 同步到 AuthUtils（如果还没有）
+      const authKey = await getEncryptionKeyFromAuth();
+      if (!authKey) {
+        await saveEncryptionKeyToAuth(storedKey);
+      }
       return CryptoService.keyFromBase64(storedKey);
     }
 
@@ -171,6 +192,9 @@ export class EncryptedNoteService {
     const newKey = CryptoService.generateRandomKey();
     const base64Key = CryptoService.keyToBase64(newKey);
     await AsyncStorage.setItem(this.ENCRYPTION_KEY_STORAGE_KEY, base64Key);
+
+    // 同时保存到 AuthUtils
+    await saveEncryptionKeyToAuth(base64Key);
 
     // 保存密钥元数据
     const metadata: KeyMetadata = {
@@ -202,10 +226,10 @@ export class EncryptedNoteService {
       if (error instanceof EncryptedNoteServiceError) {
         throw error;
       }
-      if (isCryptoError(error)) {
+      if (isAppError(error)) {
         throw new EncryptedNoteServiceError(
-          `加密笔记内容失败: ${(error as CryptoError).message}`,
-          (error as CryptoError).code,
+          `加密笔记内容失败: ${(error as AppError).message}`,
+          (error as AppError).code,
           error as Error,
         );
       }
@@ -233,10 +257,10 @@ export class EncryptedNoteService {
       if (error instanceof EncryptedNoteServiceError) {
         throw error;
       }
-      if (isCryptoError(error)) {
+      if (isAppError(error)) {
         throw new EncryptedNoteServiceError(
-          `解密笔记内容失败: ${(error as CryptoError).message}`,
-          (error as CryptoError).code,
+          `解密笔记内容失败: ${(error as AppError).message}`,
+          (error as AppError).code,
           error as Error,
         );
       }
@@ -447,10 +471,10 @@ export class EncryptedNoteService {
       if (error instanceof EncryptedNoteServiceError) {
         throw error;
       }
-      if (isCryptoError(error)) {
+      if (isAppError(error)) {
         throw new EncryptedNoteServiceError(
-          `更新加密笔记失败: ${(error as CryptoError).message}`,
-          (error as CryptoError).code,
+          `更新加密笔记失败: ${(error as AppError).message}`,
+          (error as AppError).code,
           error as Error,
         );
       }
@@ -518,10 +542,10 @@ export class EncryptedNoteService {
       if (error instanceof EncryptedNoteServiceError) {
         throw error;
       }
-      if (isCryptoError(error)) {
+      if (isAppError(error)) {
         throw new EncryptedNoteServiceError(
-          `生成新密钥失败: ${(error as CryptoError).message}`,
-          (error as CryptoError).code,
+          `生成新密钥失败: ${(error as AppError).message}`,
+          (error as AppError).code,
           error as Error,
         );
       }
@@ -563,10 +587,10 @@ export class EncryptedNoteService {
       if (error instanceof EncryptedNoteServiceError) {
         throw error;
       }
-      if (isKeyStorageError(error)) {
+      if (isAppError(error)) {
         throw new EncryptedNoteServiceError(
-          `导出密钥失败: ${(error as KeyStorageError).message}`,
-          (error as KeyStorageError).code,
+          `导出密钥失败: ${(error as AppError).message}`,
+          (error as AppError).code,
           error as Error,
         );
       }
@@ -658,10 +682,10 @@ export class EncryptedNoteService {
       if (error instanceof EncryptedNoteServiceError) {
         throw error;
       }
-      if (isKeyStorageError(error)) {
+      if (isAppError(error)) {
         throw new EncryptedNoteServiceError(
-          `导入密钥失败: ${(error as KeyStorageError).message}`,
-          (error as KeyStorageError).code,
+          `导入密钥失败: ${(error as AppError).message}`,
+          (error as AppError).code,
           error as Error,
         );
       }
@@ -677,6 +701,47 @@ export class EncryptedNoteService {
    */
   static isNoteEncrypted(note: Note): boolean {
     return note.is_encrypted === 1;
+  }
+
+  /**
+   * 更新加密密钥
+   * 将新密钥保存到 AuthUtils，使其在下次获取密钥时生效
+   * 注意：这不会重新加密现有数据，只影响新加密的笔记
+   *
+   * @param keyBase64 Base64编码的密钥
+   */
+  static async updateEncryptionKey(keyBase64: string): Promise<void> {
+    try {
+      if (!keyBase64 || typeof keyBase64 !== 'string') {
+        throw new EncryptedNoteServiceError('密钥不能为空', 'INVALID_KEY');
+      }
+
+      // 验证密钥格式
+      if (!CryptoService.isValidBase64(keyBase64)) {
+        throw new EncryptedNoteServiceError(
+          '密钥格式无效，必须是有效的base64编码',
+          'INVALID_KEY_FORMAT',
+        );
+      }
+
+      // 验证密钥长度
+      const keyBuffer = Buffer.from(keyBase64, 'base64');
+      if (keyBuffer.length !== 16 && keyBuffer.length !== 24 && keyBuffer.length !== 32) {
+        throw new EncryptedNoteServiceError(
+          `密钥长度${keyBuffer.length}字节无效，必须是16、24或32字节`,
+          'INVALID_KEY_LENGTH',
+        );
+      }
+
+      // 保存到 AuthUtils（主要存储）
+      await saveEncryptionKeyToAuth(keyBase64);
+    } catch (error) {
+      if (error instanceof EncryptedNoteServiceError) {
+        throw error;
+      }
+      console.error('更新加密密钥失败:', error);
+      throw new EncryptedNoteServiceError('更新加密密钥失败', 'UPDATE_KEY_FAILED', error as Error);
+    }
   }
 
   /**

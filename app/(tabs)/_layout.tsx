@@ -1,21 +1,32 @@
+import { useActualColorScheme } from '@/components/ThemeManager';
+import Colors from '@/constants/Colors';
+import { HeaderStyles } from '@/constants/HeaderStyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { HeaderStyles } from '@/constants/HeaderStyles';
 
 export default function TabLayout() {
   const router = useRouter();
+  const theme = useActualColorScheme();
 
   return (
     <>
-      <View style={styles.headerContainer}>
+      <View
+        style={[
+          styles.headerContainer,
+          {
+            backgroundColor: Colors[theme].headerBackground,
+            borderBottomColor: Colors[theme].headerBorder,
+          },
+        ]}
+      >
         <View style={styles.titleContainer}>
-          <Text style={styles.activeTitle}>笔记</Text>
+          <Text style={[styles.activeTitle, { color: Colors[theme].text }]}>笔记</Text>
         </View>
         <View style={styles.iconContainer}>
           <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/settings')}>
-            <Ionicons name="settings-outline" size={24} color="#666" />
+            <Ionicons name="settings-outline" size={24} color={Colors[theme].secondaryText} />
           </TouchableOpacity>
         </View>
       </View>
@@ -29,6 +40,7 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   headerContainer: {
     ...HeaderStyles.standardHeader,
+    borderBottomWidth: 1,
   },
   titleContainer: {
     flexDirection: 'row',

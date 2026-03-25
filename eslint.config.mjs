@@ -1,9 +1,9 @@
 import { FlatCompat } from '@eslint/eslintrc';
 import js from '@eslint/js';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import prettier from 'eslint-config-prettier';
 import prettierPlugin from 'eslint-plugin-prettier';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,7 +21,9 @@ export default [
     },
     rules: {
       'prettier/prettier': 'error',
-      'no-unused-vars': 'warn',
+      // TypeScript 的 no-unused-vars 由 expo 配置处理
+      // 这里只需要关闭基础的 ESLint 规则即可
+      'no-unused-vars': 'off',
     },
     languageOptions: {
       globals: {

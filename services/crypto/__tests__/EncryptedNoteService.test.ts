@@ -21,13 +21,13 @@ jest.mock('@/services', () => ({
       return Buffer.from(parts[1], 'base64').toString();
     }),
   },
-  CryptoError: class CryptoError extends Error {
+  CryptoError: class AppError extends Error {
     constructor(
       message: string,
       public code: string,
     ) {
       super(message);
-      this.name = 'CryptoError';
+      this.name = 'AppError';
     }
   },
 }));

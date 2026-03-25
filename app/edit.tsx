@@ -1,5 +1,7 @@
 import DeleteConfirmationModal from '@/components/DeleteConfirmationModal';
 import { useNotification } from '@/components/NotificationManager';
+import { useActualColorScheme } from '@/components/ThemeManager';
+import Colors from '@/constants/Colors';
 import { HeaderStyles } from '@/constants/HeaderStyles';
 import { createNote, deleteNote, getNoteById, updateNote } from '@/services/local/LocalNoteService';
 import { getDefaultEncryption } from '@/utils/auth/AuthUtils';
@@ -22,6 +24,7 @@ export default function EditScreen() {
   const { id, title, content } = useLocalSearchParams();
   const router = useRouter();
   const { showSuccess, showError } = useNotification();
+  const theme = useActualColorScheme();
 
   // 使用状态来跟踪实际的笔记ID，即使是从路由参数传入的ID为空
   const [noteId, setNoteId] = useState((id as string) || '');
@@ -130,7 +133,7 @@ export default function EditScreen() {
   };
 
   // 状态管理弹窗
-  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [, setShowSaveModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // 添加一个状态来跟踪是否正在保存，防止重复保存
@@ -291,7 +294,8 @@ export default function EditScreen() {
         });
     }
 
-    // 立即返回主页，useFocusEffect 会在主页组件重新获得焦点时触发刷新
+    // 立即返回主页
+    // 注意：主页的 useFocusEffect 会在组件重新获得焦点时自动触发刷新
     router.back();
   };
 
@@ -336,15 +340,15 @@ export default function EditScreen() {
   };
 
   // 渲染带勾选框的选项（仅用于加密选项）
-  const renderDropdownItemWithCheckbox = (option: string, text: string, color: string = '#000') => {
+  const renderDropdownItemWithCheckbox = (option: string, text: string, color?: string) => {
     return (
       <View style={styles.dropdownItem}>
-        <Text style={[styles.dropdownText, { color }]}>{text}</Text>
+        <Text style={[styles.dropdownText, { color: color || Colors[theme].text }]}>{text}</Text>
         <TouchableOpacity onPress={handleEncryptToggle} style={styles.checkboxContainer}>
           <Ionicons
             name={optionsState[option as keyof typeof optionsState] ? 'checkbox' : 'square-outline'}
             size={20}
-            color="#007AFF"
+            color={Colors[theme].primary}
           />
         </TouchableOpacity>
       </View>
@@ -352,24 +356,32 @@ export default function EditScreen() {
   };
 
   // 渲染普通选项
-  const renderDropdownItem = (option: string, text: string, color: string = '#000') => {
+  const renderDropdownItem = (option: string, text: string, color?: string) => {
     return (
       <TouchableOpacity style={styles.dropdownItem} onPress={() => handleOptionSelect(option)}>
-        <Text style={[styles.dropdownText, { color }]}>{text}</Text>
+        <Text style={[styles.dropdownText, { color: color || Colors[theme].text }]}>{text}</Text>
       </TouchableOpacity>
     );
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: Colors[theme].background }]}>
       {/* 自定义 Header */}
-      <View style={styles.header}>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: Colors[theme].headerBackground,
+            borderBottomColor: Colors[theme].headerBorder,
+          },
+        ]}
+      >
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#000" />
+          <Ionicons name="arrow-back" size={24} color={Colors[theme].text} />
         </TouchableOpacity>
         <View style={styles.headerIcons}>
           <TouchableOpacity style={styles.headerIcon} onPress={openDropdown}>
-            <Ionicons name="ellipsis-vertical" size={20} color="#888" />
+            <Ionicons name="ellipsis-vertical" size={20} color={Colors[theme].placeholder} />
           </TouchableOpacity>
         </View>
       </View>
@@ -377,27 +389,27 @@ export default function EditScreen() {
       <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
         {/* 标题输入区 */}
         <TextInput
-          style={styles.titleInput}
+          style={[styles.titleInput, { color: Colors[theme].text }]}
           value={noteTitle}
           onChangeText={setNoteTitle}
           placeholder="标题"
-          placeholderTextColor="#888"
+          placeholderTextColor={Colors[theme].placeholder}
           underlineColorAndroid="transparent"
-          selectionColor="#007AFF"
+          selectionColor={Colors[theme].primary}
           caretHidden={false}
         />
 
         {/* 内容书写区 */}
         <TextInput
-          style={styles.contentInput}
+          style={[styles.contentInput, { color: Colors[theme].text }]}
           value={noteContent}
           onChangeText={setNoteContent}
           placeholder="开始书写笔记"
-          placeholderTextColor="#888"
+          placeholderTextColor={Colors[theme].placeholder}
           multiline={true}
           textAlignVertical="top"
           underlineColorAndroid="transparent"
-          selectionColor="#007AFF"
+          selectionColor={Colors[theme].primary}
           caretHidden={false}
         />
       </ScrollView>
@@ -417,12 +429,13 @@ export default function EditScreen() {
               {
                 opacity: fadeAnim,
                 transform: [{ scale: scaleAnim }],
+                backgroundColor: Colors[theme].dropdownBackground,
               },
             ]}
           >
-            {renderDropdownItem('save', '保存', '#007AFF')}
-            {renderDropdownItem('delete', '删除', '#FF3B30')}
-            {renderDropdownItemWithCheckbox('encrypt', '加密', '#000')}
+            {renderDropdownItem('save', '保存', Colors[theme].primary)}
+            {renderDropdownItem('delete', '删除', Colors[theme].danger)}
+            {renderDropdownItemWithCheckbox('encrypt', '加密')}
           </Animated.View>
         </TouchableOpacity>
       </Modal>
@@ -444,11 +457,11 @@ export default function EditScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
   },
   header: {
     ...HeaderStyles.standardHeader,
     paddingHorizontal: 15,
+    borderBottomWidth: 1,
   },
   backButton: {
     ...HeaderStyles.backButton,
@@ -469,11 +482,15 @@ const styles = StyleSheet.create({
   titleInput: {
     fontSize: 24,
     fontWeight: 'bold',
-    padding: 0,
+    height: 40,
+    textAlignVertical: 'center',
+    paddingTop: 0,
+    paddingBottom: 0,
     marginVertical: 10,
     borderWidth: 0,
     outlineWidth: 0,
     borderStyle: 'solid',
+    includeFontPadding: false,
   },
   buttonContainer: {
     alignItems: 'center',
@@ -498,11 +515,15 @@ const styles = StyleSheet.create({
   contentInput: {
     flex: 1,
     fontSize: 16,
-    padding: 0,
-    textAlignVertical: 'top',
+    minHeight: 200,
+    textAlignVertical: 'center',
+    paddingTop: 0,
+    paddingBottom: 0,
+    paddingHorizontal: 0,
     borderWidth: 0,
     outlineWidth: 0,
     borderStyle: 'solid',
+    includeFontPadding: false,
   },
   // 悬浮窗样式
   modalOverlay: {
@@ -512,7 +533,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   dropdownContainer: {
-    backgroundColor: '#fff',
     borderRadius: 8,
     marginTop: 60,
     marginRight: 15,

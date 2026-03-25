@@ -1,3 +1,5 @@
+import { useActualColorScheme } from '@/components/ThemeManager';
+import Colors from '@/constants/Colors';
 import { HeaderStyles } from '@/constants/HeaderStyles';
 import {
   getApiKey,
@@ -12,6 +14,8 @@ import {
   saveEncryptionKey,
 } from '@/utils/auth/AuthUtils';
 import { generateEncryptionKey } from '@/utils/crypto/EncryptionUtils';
+import { EncryptedNoteService } from '@/services/crypto/EncryptedNoteService';
+import { TransparentCryptoService } from '@/services/crypto/TransparentCryptoService';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -32,6 +36,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function ServerSettingsScreen() {
   const router = useRouter();
+  const effectiveTheme = useActualColorScheme();
   const [apiUrl, setApiUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [password, setPassword] = useState('');
@@ -171,8 +176,15 @@ export default function ServerSettingsScreen() {
       // 保存配置到存储
       await saveApiUrl(apiUrl);
       await saveApiKey(apiKey);
-      await saveEncryptionKey(password); // 保存加密密钥
+      await saveEncryptionKey(password); // 保存加密密钥到 AuthUtils
       await saveDefaultEncryption(defaultEncryption); // 保存默认加密设置
+
+      // 更新加密服务的密钥
+      if (password) {
+        await EncryptedNoteService.updateEncryptionKey(password);
+        // 重新初始化透明加密服务，使其使用新密钥
+        await TransparentCryptoService.reinitialize();
+      }
 
       // 实际保存成功，直接跳转回上一页
       setIsSaving(false);
@@ -207,7 +219,9 @@ export default function ServerSettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: Colors[effectiveTheme].background }]}
+    >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -219,14 +233,14 @@ export default function ServerSettingsScreen() {
             onPress={() => router.back()}
             activeOpacity={0.7}
           >
-            <Ionicons name="chevron-back" size={24} color="#333" />
-            <Text style={styles.backText}>返回</Text>
+            <Ionicons name="chevron-back" size={24} color={Colors[effectiveTheme].text} />
+            <Text style={[styles.backText, { color: Colors[effectiveTheme].text }]}>返回</Text>
           </TouchableOpacity>
         </Animated.View>
 
         {/* 标题区域 */}
         <View style={styles.pageTitleContainer}>
-          <Text style={styles.pageTitle}>服务器设置</Text>
+          <Text style={[styles.pageTitle, { color: Colors[effectiveTheme].text }]}>服务器设置</Text>
         </View>
 
         {/* 核心内容区域 */}
@@ -244,23 +258,37 @@ export default function ServerSettingsScreen() {
                 style={styles.inputContainer}
               >
                 <View style={styles.inputHeader}>
-                  <Ionicons name="server" size={18} color="#666" />
-                  <Text style={styles.inputLabel}>API URL</Text>
+                  <Ionicons name="server" size={18} color={Colors[effectiveTheme].secondaryText} />
+                  <Text style={[styles.inputLabel, { color: Colors[effectiveTheme].text }]}>
+                    API URL
+                  </Text>
                 </View>
                 <View style={styles.urlInputContainer}>
                   <TextInput
-                    style={[styles.input, styles.urlInput]}
+                    style={[
+                      styles.input,
+                      styles.urlInput,
+                      {
+                        backgroundColor: Colors[effectiveTheme].cardBackground,
+                        borderColor: Colors[effectiveTheme].cardBorder,
+                        color: Colors[effectiveTheme].text,
+                      },
+                    ]}
                     placeholder="https://api.example.com"
                     value={apiUrl}
                     onChangeText={setApiUrl}
-                    placeholderTextColor="#999"
+                    placeholderTextColor={Colors[effectiveTheme].placeholder}
                     autoCapitalize="none"
                     autoCorrect={false}
                     keyboardType="url"
                   />
                   {apiUrl ? (
                     <TouchableOpacity style={styles.clearInputButton} onPress={() => setApiUrl('')}>
-                      <Ionicons name="close-circle" size={20} color="#999" />
+                      <Ionicons
+                        name="close-circle"
+                        size={20}
+                        color={Colors[effectiveTheme].placeholder}
+                      />
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -272,17 +300,27 @@ export default function ServerSettingsScreen() {
                 style={styles.inputContainer}
               >
                 <View style={styles.inputHeader}>
-                  <Ionicons name="key" size={18} color="#666" />
-                  <Text style={styles.inputLabel}>API Key</Text>
+                  <Ionicons name="key" size={18} color={Colors[effectiveTheme].secondaryText} />
+                  <Text style={[styles.inputLabel, { color: Colors[effectiveTheme].text }]}>
+                    API Key
+                  </Text>
                 </View>
                 <View style={styles.passwordContainer}>
                   <TextInput
-                    style={[styles.input, styles.passwordInput]}
+                    style={[
+                      styles.input,
+                      styles.passwordInput,
+                      {
+                        backgroundColor: Colors[effectiveTheme].cardBackground,
+                        borderColor: Colors[effectiveTheme].cardBorder,
+                        color: Colors[effectiveTheme].text,
+                      },
+                    ]}
                     placeholder="请输入API密钥"
                     value={apiKey}
                     onChangeText={setApiKey}
                     secureTextEntry={!showApiKey}
-                    placeholderTextColor="#999"
+                    placeholderTextColor={Colors[effectiveTheme].placeholder}
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
@@ -291,7 +329,11 @@ export default function ServerSettingsScreen() {
                     onPress={() => setShowApiKey(!showApiKey)}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name={showApiKey ? 'eye-off' : 'eye'} size={20} color="#666" />
+                    <Ionicons
+                      name={showApiKey ? 'eye-off' : 'eye'}
+                      size={20}
+                      color={Colors[effectiveTheme].secondaryText}
+                    />
                   </TouchableOpacity>
                 </View>
               </Animated.View>
@@ -302,17 +344,31 @@ export default function ServerSettingsScreen() {
                 style={styles.inputContainer}
               >
                 <View style={styles.inputHeader}>
-                  <Ionicons name="lock-closed" size={18} color="#666" />
-                  <Text style={styles.inputLabel}>密钥</Text>
+                  <Ionicons
+                    name="lock-closed"
+                    size={18}
+                    color={Colors[effectiveTheme].secondaryText}
+                  />
+                  <Text style={[styles.inputLabel, { color: Colors[effectiveTheme].text }]}>
+                    密钥
+                  </Text>
                 </View>
                 <View style={styles.passwordContainer}>
                   <TextInput
-                    style={[styles.input, styles.passwordInput]}
+                    style={[
+                      styles.input,
+                      styles.passwordInput,
+                      {
+                        backgroundColor: Colors[effectiveTheme].cardBackground,
+                        borderColor: Colors[effectiveTheme].cardBorder,
+                        color: Colors[effectiveTheme].text,
+                      },
+                    ]}
                     placeholder="请输入密钥"
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
-                    placeholderTextColor="#999"
+                    placeholderTextColor={Colors[effectiveTheme].placeholder}
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
@@ -321,7 +377,11 @@ export default function ServerSettingsScreen() {
                     onPress={() => setShowPassword(!showPassword)}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name={showPassword ? 'eye-off' : 'eye'} size={20} color="#666" />
+                    <Ionicons
+                      name={showPassword ? 'eye-off' : 'eye'}
+                      size={20}
+                      color={Colors[effectiveTheme].secondaryText}
+                    />
                   </TouchableOpacity>
                 </View>
               </Animated.View>
@@ -332,8 +392,14 @@ export default function ServerSettingsScreen() {
                 style={styles.inputContainer}
               >
                 <View style={styles.inputHeader}>
-                  <Ionicons name="shield-checkmark" size={18} color="#666" />
-                  <Text style={styles.inputLabel}>默认启用加密</Text>
+                  <Ionicons
+                    name="shield-checkmark"
+                    size={18}
+                    color={Colors[effectiveTheme].secondaryText}
+                  />
+                  <Text style={[styles.inputLabel, { color: Colors[effectiveTheme].text }]}>
+                    默认启用加密
+                  </Text>
                 </View>
                 <TouchableOpacity
                   style={styles.checkboxContainer}
@@ -344,10 +410,14 @@ export default function ServerSettingsScreen() {
                     <Ionicons
                       name={defaultEncryption ? 'checkbox' : 'square-outline'}
                       size={24}
-                      color={defaultEncryption ? '#4A90E2' : '#999'}
+                      color={
+                        defaultEncryption
+                          ? Colors[effectiveTheme].primary
+                          : Colors[effectiveTheme].placeholder
+                      }
                     />
                   </View>
-                  <Text style={styles.checkboxText}>
+                  <Text style={[styles.checkboxText, { color: Colors[effectiveTheme].text }]}>
                     {defaultEncryption ? '新笔记将自动启用加密' : '新笔记默认不加密，需手动开启'}
                   </Text>
                 </TouchableOpacity>
@@ -361,25 +431,42 @@ export default function ServerSettingsScreen() {
             style={styles.actionsContainer}
           >
             <TouchableOpacity
-              style={[styles.button, styles.testButton]}
+              style={[
+                styles.button,
+                styles.testButton,
+                {
+                  backgroundColor: Colors[effectiveTheme].cardBackground,
+                  borderColor: Colors[effectiveTheme].primary,
+                },
+              ]}
               onPress={handleGenerateRandomKey}
               activeOpacity={0.8}
             >
-              <Ionicons name="key" size={20} color="#4A90E2" />
-              <Text style={styles.testButtonText}>生成随机密钥</Text>
+              <Ionicons name="key" size={20} color={Colors[effectiveTheme].primary} />
+              <Text style={[styles.testButtonText, { color: Colors[effectiveTheme].primary }]}>
+                生成随机密钥
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.button, styles.saveButton]}
+              style={[
+                styles.button,
+                styles.saveButton,
+                { backgroundColor: Colors[effectiveTheme].primary },
+              ]}
               onPress={handleSave}
               activeOpacity={0.8}
               disabled={isSaving}
             >
               {isSaving ? (
-                <ActivityIndicator color="#FFF" size="small" />
+                <ActivityIndicator color={Colors[effectiveTheme].background} size="small" />
               ) : (
                 <>
-                  <Ionicons name="save" size={20} color="#FFF" />
-                  <Text style={styles.saveButtonText}>保存设置</Text>
+                  <Ionicons name="save" size={20} color={Colors[effectiveTheme].background} />
+                  <Text
+                    style={[styles.saveButtonText, { color: Colors[effectiveTheme].background }]}
+                  >
+                    保存设置
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
@@ -401,30 +488,82 @@ export default function ServerSettingsScreen() {
               activeOpacity={1}
               accessible={false}
             />
-            <View style={styles.modalContent} accessible={true} accessibilityElementsHidden={false}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{showCustomModal.title}</Text>
+            <View
+              style={[
+                styles.modalContent,
+                {
+                  backgroundColor: Colors[effectiveTheme].cardBackground,
+                  borderColor: Colors[effectiveTheme].cardBorder,
+                },
+              ]}
+              accessible={true}
+              accessibilityElementsHidden={false}
+            >
+              <View
+                style={[
+                  styles.modalHeader,
+                  {
+                    borderBottomColor: Colors[effectiveTheme].cardBorder,
+                  },
+                ]}
+              >
+                <Text style={[styles.modalTitle, { color: Colors[effectiveTheme].text }]}>
+                  {showCustomModal.title}
+                </Text>
               </View>
 
               <View style={styles.modalBody}>
-                <Text style={styles.modalMessage}>{showCustomModal.message}</Text>
+                <Text style={[styles.modalMessage, { color: Colors[effectiveTheme].text }]}>
+                  {showCustomModal.message}
+                </Text>
               </View>
 
-              <View style={styles.modalFooter}>
+              <View
+                style={[
+                  styles.modalFooter,
+                  {
+                    borderTopColor: Colors[effectiveTheme].cardBorder,
+                  },
+                ]}
+              >
                 {showCustomModal.type === 'confirm' && (
                   <>
                     <TouchableOpacity
-                      style={[styles.modalButton, styles.modalCancelButton]}
+                      style={[
+                        styles.modalButton,
+                        styles.modalCancelButton,
+                        {
+                          borderRightColor: Colors[effectiveTheme].cardBorder,
+                        },
+                      ]}
                       onPress={showCustomModal.onCancel}
                     >
-                      <Text style={[styles.modalButtonText, { color: '#8E8E93' }]}>取消</Text>
+                      <Text
+                        style={[
+                          styles.modalButtonText,
+                          { color: Colors[effectiveTheme].secondaryText },
+                        ]}
+                      >
+                        取消
+                      </Text>
                     </TouchableOpacity>
-                    <View style={styles.buttonSeparator} />
+                    <View
+                      style={[
+                        styles.buttonSeparator,
+                        {
+                          backgroundColor: Colors[effectiveTheme].cardBorder,
+                        },
+                      ]}
+                    />
                     <TouchableOpacity
                       style={[styles.modalButton, styles.modalConfirmButton]}
                       onPress={showCustomModal.onConfirm}
                     >
-                      <Text style={[styles.modalButtonText, { color: '#FF3B30' }]}>确定</Text>
+                      <Text
+                        style={[styles.modalButtonText, { color: Colors[effectiveTheme].danger }]}
+                      >
+                        确定
+                      </Text>
                     </TouchableOpacity>
                   </>
                 )}
@@ -433,7 +572,11 @@ export default function ServerSettingsScreen() {
                     style={[styles.modalButton, styles.modalConfirmButton]}
                     onPress={showCustomModal.onConfirm}
                   >
-                    <Text style={[styles.modalButtonText, { color: '#007AFF' }]}>确定</Text>
+                    <Text
+                      style={[styles.modalButtonText, { color: Colors[effectiveTheme].primary }]}
+                    >
+                      确定
+                    </Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -448,7 +591,6 @@ export default function ServerSettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFD',
   },
   scrollView: {
     flex: 1,
@@ -468,7 +610,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1A1A1A',
   },
   pageTitleContainer: {
     paddingHorizontal: 20,
@@ -479,7 +620,6 @@ const styles = StyleSheet.create({
   pageTitle: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#1A1A1A',
   },
   clearButton: {
     paddingVertical: 8,
@@ -487,31 +627,25 @@ const styles = StyleSheet.create({
   },
   clearText: {
     fontSize: 14,
-    color: '#FF3B30',
     fontWeight: '500',
   },
   contentCard: {
     margin: 16,
-    backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#E9ECEF',
   },
   infoCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F0F7FF',
     padding: 16,
     borderRadius: 12,
     marginBottom: 24,
     borderLeftWidth: 4,
-    borderLeftColor: '#4A90E2',
   },
   infoText: {
     flex: 1,
     fontSize: 14,
-    color: '#4A90E2',
     marginLeft: 12,
     lineHeight: 20,
   },
@@ -530,19 +664,19 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#333',
     marginLeft: 8,
   },
   input: {
-    backgroundColor: '#F8F9FA',
     borderWidth: 1.5,
-    borderColor: '#E9ECEF',
     borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    height: 54,
+    textAlignVertical: 'center',
+    paddingTop: 0,
+    paddingBottom: 0,
     fontSize: 16,
-    color: '#1A1A1A',
     fontWeight: '400',
+    includeFontPadding: false,
   },
   passwordContainer: {
     position: 'relative',
@@ -580,7 +714,6 @@ const styles = StyleSheet.create({
   },
   helperText: {
     fontSize: 13,
-    color: '#888',
     marginLeft: 6,
     fontStyle: 'italic',
   },
@@ -600,22 +733,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   testButton: {
-    backgroundColor: '#FFF',
     borderWidth: 1.5,
-    borderColor: '#4A90E2',
   },
   testButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#4A90E2',
   },
-  saveButton: {
-    backgroundColor: '#4A90E2',
-  },
+  saveButton: {},
   saveButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFF',
   },
   // 现代化弹窗样式
   modalContainer: {
@@ -634,22 +761,18 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '80%',
     maxWidth: 300,
-    backgroundColor: '#fff',
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#f0f0f0',
   },
   modalHeader: {
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#000',
     textAlign: 'center',
   },
   modalBody: {
@@ -658,14 +781,12 @@ const styles = StyleSheet.create({
   },
   modalMessage: {
     fontSize: 16,
-    color: '#666',
     lineHeight: 22,
     textAlign: 'center',
   },
   modalFooter: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
   },
   modalButton: {
     flex: 1,
@@ -675,7 +796,6 @@ const styles = StyleSheet.create({
   },
   modalCancelButton: {
     borderRightWidth: 1,
-    borderRightColor: '#f0f0f0',
   },
   modalConfirmButton: {
     // No additional styles needed for confirm button
@@ -686,7 +806,6 @@ const styles = StyleSheet.create({
   },
   buttonSeparator: {
     width: 1,
-    backgroundColor: '#f0f0f0',
   },
   checkboxContainer: {
     flexDirection: 'row',
@@ -699,7 +818,6 @@ const styles = StyleSheet.create({
   checkboxText: {
     flex: 1,
     fontSize: 14,
-    color: '#666',
     lineHeight: 20,
   },
 });

@@ -1,4 +1,5 @@
-import { CryptoError, CryptoService } from '@/services/crypto/CryptoService';
+import { AppError } from '@/utils/errors/AppError';
+import { CryptoService } from '@/services/crypto/CryptoService';
 import { EncryptedData, EncryptionKey, EncryptionOptions } from '@/types/crypto/CryptoTypes';
 
 /**
@@ -54,7 +55,7 @@ export const validateKeyFormat = (keyBase64: string): boolean => {
 
 /**
  * 验证加密数据格式是否有效
- * @param data 加密数据（格式: iv:encryptedContent）
+ * @param data 加密数据（格式: iv:encryptedContent 或 iv:authTag:encryptedContent）
  * @returns 是否有效
  */
 export const validateEncryptedData = (data: string): boolean => {
@@ -62,18 +63,22 @@ export const validateEncryptedData = (data: string): boolean => {
     return false;
   }
   const parts = data.split(':');
-  if (parts.length !== 2) {
+  // 支持两种格式: iv:encryptedContent (CBC) 或 iv:authTag:encryptedContent (GCM)
+  if (parts.length !== 2 && parts.length !== 3) {
     return false;
   }
-  const [ivBase64, encryptedContent] = parts;
+
+  const [ivBase64, ...restParts] = parts;
+  const encryptedContent = parts.length === 2 ? restParts[0] : restParts[1];
+
   // 验证IV部分
   if (!ivBase64 || !isValidBase64(ivBase64)) {
     return false;
   }
-  // 验证IV长度（16字节 = 24个base64字符）
+  // 验证IV长度（GCM 模式 12 字节，CBC 模式 16 字节）
   try {
     const iv = Buffer.from(ivBase64, 'base64');
-    if (iv.length !== 16) {
+    if (iv.length !== 12 && iv.length !== 16) {
       return false;
     }
   } catch {
@@ -118,7 +123,7 @@ export const generateEncryptionKey = (length: number = 32): string => {
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`生成密钥失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('生成加密密钥失败', 'KEY_GENERATION_FAILED', error as Error);
@@ -151,7 +156,7 @@ export const generateEncryptionKeyWithMetadata = (
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`生成密钥失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('生成加密密钥失败', 'KEY_GENERATION_FAILED', error as Error);
@@ -162,7 +167,7 @@ export const generateEncryptionKeyWithMetadata = (
  * 加密文本数据
  * @param text 要加密的文本
  * @param keyBase64 base64格式的密钥
- * @returns 加密后的数据(base64格式)
+ * @returns 加密后的数据(base64格式，格式: iv:authTag:encryptedContent)
  */
 export const encryptText = (text: string, keyBase64: string): string => {
   try {
@@ -177,12 +182,13 @@ export const encryptText = (text: string, keyBase64: string): string => {
       );
     }
     const key = CryptoService.keyFromBase64(keyBase64);
-    return CryptoService.encrypt(text, key);
+    // 使用 GCM 模式进行加密（包含认证标签）
+    return CryptoService.encrypt(text, key, 'aes-256-gcm');
   } catch (error) {
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`加密失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('加密文本失败', 'ENCRYPTION_FAILED', error as Error);
@@ -218,7 +224,7 @@ export const encryptTextWithMetadata = (
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`加密失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('加密文本失败', 'ENCRYPTION_FAILED', error as Error);
@@ -227,7 +233,7 @@ export const encryptTextWithMetadata = (
 
 /**
  * 解密文本数据
- * @param encryptedText 加密的文本数据
+ * @param encryptedText 加密的文本数据（格式: iv:encryptedContent 或 iv:authTag:encryptedContent）
  * @param keyBase64 base64格式的密钥
  * @returns 解密后的原始文本
  */
@@ -239,7 +245,7 @@ export const decryptText = (encryptedText: string, keyBase64: string): string =>
     }
     if (!validateEncryptedData(encryptedText)) {
       throw new EncryptionUtilsError(
-        '加密数据格式无效，应为"iv:encryptedContent"格式',
+        '加密数据格式无效，应为"iv:encryptedContent"或"iv:authTag:encryptedContent"格式',
         'INVALID_ENCRYPTED_FORMAT',
       );
     }
@@ -250,12 +256,15 @@ export const decryptText = (encryptedText: string, keyBase64: string): string =>
       );
     }
     const key = CryptoService.keyFromBase64(keyBase64);
-    return CryptoService.decrypt(encryptedText, key);
+    // 根据格式判断使用哪种算法（2部分=_CBC, 3部分=_GCM）
+    const parts = encryptedText.split(':');
+    const algorithm = parts.length === 3 ? 'aes-256-gcm' : 'aes-256-cbc';
+    return CryptoService.decrypt(encryptedText, key, algorithm);
   } catch (error) {
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`解密失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('解密文本失败', 'DECRYPTION_FAILED', error as Error);
@@ -295,7 +304,7 @@ export const decryptTextWithMetadata = (
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`解密失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('解密文本失败', 'DECRYPTION_FAILED', error as Error);
@@ -326,7 +335,7 @@ export const encryptTextWithStringKey = (text: string, keyString: string): strin
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`加密失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('加密文本失败', 'ENCRYPTION_FAILED', error as Error);
@@ -363,7 +372,7 @@ export const decryptTextWithStringKey = (encryptedText: string, keyString: strin
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`解密失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError('解密文本失败', 'DECRYPTION_FAILED', error as Error);
@@ -385,7 +394,7 @@ export const generateRandomStringKey = (length: number = 32): string => {
     if (error instanceof EncryptionUtilsError) {
       throw error;
     }
-    if (error instanceof CryptoError) {
+    if (error instanceof AppError) {
       throw new EncryptionUtilsError(`生成密钥失败: ${error.message}`, error.code, error);
     }
     throw new EncryptionUtilsError(

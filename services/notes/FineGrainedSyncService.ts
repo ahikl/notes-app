@@ -25,7 +25,7 @@ import {
   getSyncRestore,
   getSyncStatus,
 } from './NoteService';
-import { SyncServiceError } from './SyncService';
+import { SyncServiceError } from '@/services';
 
 const LAST_SYNC_TIMESTAMP_KEY = 'last_sync_timestamp';
 
@@ -256,7 +256,7 @@ export const uploadPendingNotes = async (): Promise<{
         id: note.id,
         data: {
           sync_status: 0,
-        } as any,
+        },
       }));
       await DatabaseService.batchOperationNotes([], updateData, []);
       console.log(
@@ -306,24 +306,21 @@ export const resolveConflicts = async (
 
   if (conflicts.length === 0) {
     console.log('[FineGrainedSyncService] 没有检测到冲突');
+    YjsNoteService.cleanupAll();
     return serverUpdates;
   }
 
   console.log(`[FineGrainedSyncService] 检测到 ${conflicts.length} 条冲突笔记，使用CRDT合并`);
 
-  // 解密冲突笔记用于CRDT合并
+  // 解密冲突笔记用于 CRDT 合并
   const decryptedConflicts = await Promise.all(
-    conflicts.map(async (conflict) => {
+    conflicts.map(async ({ id, local, server }) => {
       const localPlain =
-        conflict.local.is_encrypted === 1
-          ? await TransparentCryptoService.decryptNote(conflict.local)
-          : conflict.local;
+        local.is_encrypted === 1 ? await TransparentCryptoService.decryptNote(local) : local;
       const serverPlain =
-        conflict.server.is_encrypted === 1
-          ? await TransparentCryptoService.decryptNote(conflict.server)
-          : conflict.server;
+        server.is_encrypted === 1 ? await TransparentCryptoService.decryptNote(server) : server;
       return {
-        id: conflict.id,
+        id,
         local: localPlain as Note,
         server: serverPlain as Note,
       };
@@ -337,12 +334,11 @@ export const resolveConflicts = async (
   const mergedNotes = await Promise.all(
     mergedPlainNotes.map(async (note) => {
       if (note.is_encrypted === 1) {
-        const encrypted = await TransparentCryptoService.encryptNote({
+        return await TransparentCryptoService.encryptNote({
           ...note,
           sync_status: 0,
           is_deleted: note.is_deleted ?? 0,
         });
-        return encrypted;
       }
       return note;
     }),
@@ -399,11 +395,11 @@ export const executeFineGrainedSync = async (): Promise<FineGrainedSyncResult> =
     // 获取上次同步时间戳
     const lastSyncTimestamp = await getLastSyncTimestamp();
 
-    // 步骤1: 查询同步状态（可选，用于日志记录）
+    // 步骤 1: 查询同步状态（可选，用于日志记录）
     const syncStatus = await checkSyncStatus(localNoteIds, localDeletedNoteIds);
 
-    // 步骤6: 先上传本地待同步笔记
-    const uploadResult = await uploadPendingNotes();
+    // 步骤 6: 先上传本地待同步笔记
+    await uploadPendingNotes();
 
     // 步骤2: 获取增量更新
     const incrementalUpdates = await fetchIncrementalUpdates(lastSyncTimestamp, localNoteIds);
